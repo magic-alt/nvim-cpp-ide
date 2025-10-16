@@ -1,0 +1,11 @@
+name: "✨ Feature request"
+description: 提出改进或新特性
+labels: [enhancement]
+body:
+  - type: textarea
+    attributes: { label: 动机, placeholder: "为什么需要？当前的痛点是什么？" }
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: 备选方案, placeholder: "有没有替代做法？" }
+  - type: textarea
+    attributes: { label: 其他信息/截图 }

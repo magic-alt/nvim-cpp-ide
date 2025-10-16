@@ -1,0 +1,10 @@
+enhancement:
+  - '**/*.vim'
+  - 'README.md'
+bug:
+  - '**/*.vim'
+docs:
+  - 'README.md'
+  - 'docs/**'
+ci:
+  - '.github/**'

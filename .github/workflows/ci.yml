@@ -1,0 +1,27 @@
+name: CI
+on:
+  push: { branches: [ main ] }
+  pull_request: { branches: [ main ] }
+
+jobs:
+  lint-and-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shellcheck install scripts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          shellcheck install.sh uninstall.sh
+
+      - name: Luacheck config.vim (via selene-lua/luacheck portable)
+        run: |
+          sudo apt-get install -y luarocks
+          sudo luarocks install luacheck
+          luacheck --no-color --filename config.vim || true
+
+      - name: Headless start (Neovim)
+        run: |
+          sudo apt-get install -y neovim
+          nvim --headless -u ./config.vim -c 'q'
