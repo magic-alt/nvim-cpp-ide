@@ -4,6 +4,7 @@ Param(
 )
 
 $ErrorActionPreference = "Stop"
+$ProgressPreference = 'SilentlyContinue'  # Speed up web requests
 
 $destNvim = "$HOME\AppData\Local\nvim"
 $destVim1 = "$HOME\vimfiles\my_configs.vim"      # gVim
@@ -19,24 +20,57 @@ if (Test-Path $destNvim) {
 Write-Host "[2/4] Clone repo..." -ForegroundColor Cyan
 $tmp = Join-Path $env:TEMP ([System.Guid]::NewGuid().ToString())
 
-# Find Windows Git if available
-$gitCmd = "git"
-if (Test-Path "C:\Program Files\Git\cmd\git.exe") {
-    $gitCmd = "C:\Program Files\Git\cmd\git.exe"
+# Find working Git installation
+$gitExe = $null
+$gitPaths = @(
+    "C:\Program Files\Git\cmd\git.exe",
+    "C:\Program Files (x86)\Git\cmd\git.exe",
+    "$env:LOCALAPPDATA\Programs\Git\cmd\git.exe",
+    "git"  # Try PATH
+)
+
+foreach ($gitPath in $gitPaths) {
+    try {
+        $testGit = if ($gitPath -eq "git") { "git" } else { $gitPath }
+        $null = & $testGit --version 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $gitExe = $testGit
+            if ($gitPath -ne "git") {
+                Write-Host "  Using: $git Path" -ForegroundColor DarkGray
+            }
+            break
+        }
+    } catch {
+        continue
+    }
+}
+
+if (-not $gitExe) {
+    Write-Error "Git not found. Please install Git: winget install Git.Git"
+    exit 1
 }
 
 try {
-    $cloneOutput = & $gitCmd clone --depth 1 "https://github.com/$Repo.git" $tmp 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "  Clone output: $cloneOutput" -ForegroundColor Red
-        throw "Git clone failed. Please ensure git is installed and you have internet connection."
+    Write-Host "  Cloning repository..." -ForegroundColor DarkGray
+    $cloneArgs = @("clone", "--depth", "1", "https://github.com/$Repo.git", $tmp)
+    
+    if ($gitExe -eq "git") {
+        & git $cloneArgs 2>&1 | Out-Null
+    } else {
+        & $gitExe $cloneArgs 2>&1 | Out-Null
     }
+    
+    if ($LASTEXITCODE -ne 0) {
+        throw "Git clone failed (exit code: $LASTEXITCODE)"
+    }
+    
+    Write-Host "  Clone successful ✓" -ForegroundColor Green
 } catch {
     Write-Error "Failed to clone repository: $_"
-    Write-Host "`nTroubleshooting tips:" -ForegroundColor Yellow
-    Write-Host "  1. Ensure Git is installed: winget install Git.Git" -ForegroundColor White
-    Write-Host "  2. Check internet connection" -ForegroundColor White
-    Write-Host "  3. Try running: git config --global http.sslVerify true" -ForegroundColor White
+    Write-Host "`nTroubleshooting:" -ForegroundColor Yellow
+    Write-Host "  • Ensure Git is installed: winget install Git.Git" -ForegroundColor White
+    Write-Host "  • Check internet connection" -ForegroundColor White
+    Write-Host "  • Try: git config --global http.sslVerify true" -ForegroundColor White
     exit 1
 }
 
