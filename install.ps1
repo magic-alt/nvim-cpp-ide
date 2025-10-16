@@ -18,13 +18,25 @@ if (Test-Path $destNvim) {
 
 Write-Host "[2/4] Clone repo..." -ForegroundColor Cyan
 $tmp = Join-Path $env:TEMP ([System.Guid]::NewGuid().ToString())
+
+# Find Windows Git if available
+$gitCmd = "git"
+if (Test-Path "C:\Program Files\Git\cmd\git.exe") {
+    $gitCmd = "C:\Program Files\Git\cmd\git.exe"
+}
+
 try {
-    git clone --depth 1 "https://github.com/$Repo.git" $tmp 2>&1 | Out-Null
+    $cloneOutput = & $gitCmd clone --depth 1 "https://github.com/$Repo.git" $tmp 2>&1
     if ($LASTEXITCODE -ne 0) {
+        Write-Host "  Clone output: $cloneOutput" -ForegroundColor Red
         throw "Git clone failed. Please ensure git is installed and you have internet connection."
     }
 } catch {
     Write-Error "Failed to clone repository: $_"
+    Write-Host "`nTroubleshooting tips:" -ForegroundColor Yellow
+    Write-Host "  1. Ensure Git is installed: winget install Git.Git" -ForegroundColor White
+    Write-Host "  2. Check internet connection" -ForegroundColor White
+    Write-Host "  3. Try running: git config --global http.sslVerify true" -ForegroundColor White
     exit 1
 }
 
