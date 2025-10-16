@@ -5,6 +5,25 @@
 "  License: MIT
 " ============================================================================
 
+" --- Neovim 0.11+ Compatibility Fix -----------------------------------------
+if has('nvim-0.11')
+  lua << EOF
+    -- Suppress deprecation warnings temporarily (plugins will be updated)
+    local original_deprecate = vim.deprecate
+    vim.deprecate = function(name, alternative, version, plugin, backtrace)
+      -- Silently handle deprecations to avoid cluttering output
+      -- Comment this to see warnings for debugging
+      return
+    end
+    
+    -- Disable treesitter if it causes query errors
+    -- (helps with compatibility until plugins update)
+    pcall(function()
+      vim.g.loaded_nvim_treesitter = 1
+    end)
+EOF
+endif
+
 " --- Compatibility -----------------------------------------------------------
 if has('nvim')
   let g:is_nvim = 1
