@@ -1,15 +1,16 @@
--- init.lua — 最小替换：从 Vim 插件过渡到 Neovim/Lua 生态
--- 目标：保持常用按键/用法不变或提供兼容封装，减少软冲突
--- 替换：YCM/ALE/NERDTree/airline → LSP+nvim-cmp+conform、nvim-tree、lualine
--- 保留：AsyncRun、Telescope、gitsigns；新增：nvim-treesitter、which-key (Lua)
+-- init.lua — Neovim 0.11+ 原生 LSP 配置（默认启用）
+--
+-- 要求：Neovim nightly/0.11+（提供 vim.lsp.config 原生接口）
+-- 提示：如果仍在使用 0.10.x 及更早版本，请切换到 `config.vim`
+--       或使用仓库历史版本中的 `init.lua`（基于 nvim-lspconfig）。
 
 ------------------------------------------------------------
--- 0) 基础选项（保持你现有习惯，可按需合并）
+-- 0) 基础选项
 ------------------------------------------------------------
 vim.g.mapleader = " "
 vim.g.maplocalleader = " "
 
--- 基本设置（从 config.vim 迁移）
+-- 基本设置
 vim.opt.number = true
 vim.opt.relativenumber = true
 vim.opt.cursorline = true
@@ -38,7 +39,7 @@ vim.opt.path:append("**")
 vim.opt.wildmenu = true
 
 ------------------------------------------------------------
--- 1) 引导 lazy.nvim（推荐 Neovim 0.9+）
+-- 1) lazy.nvim 插件管理
 ------------------------------------------------------------
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 if not vim.loop.fs_stat(lazypath) then
@@ -62,7 +63,7 @@ end
 vim.opt.rtp:prepend(lazypath)
 
 ------------------------------------------------------------
--- 2) 插件声明（最小替换集合）
+-- 2) 插件声明（Neovim 0.11+ 原生 LSP 所需组件）
 ------------------------------------------------------------
 local lazy_ok, lazy = pcall(require, "lazy")
 if not lazy_ok then
@@ -72,7 +73,7 @@ if not lazy_ok then
 end
 
 lazy.setup({
-  -- 配色方案（保持 molokai 风格）
+  -- 配色方案
   {
     "tomasr/molokai",
     lazy = false,
@@ -82,82 +83,50 @@ lazy.setup({
     end,
   },
 
-  -- 文件树（替换 NERDTree）
+  -- 文件树
   {
     "nvim-tree/nvim-tree.lua",
     dependencies = { "nvim-tree/nvim-web-devicons" },
     keys = {
-      { "<C-n>", "<cmd>NvimTreeToggle<cr>", desc = "Toggle file tree (NERDTree 习惯)" },
+      { "<C-n>", "<cmd>NvimTreeToggle<cr>", desc = "Toggle file tree" },
       { "<leader>e", "<cmd>NvimTreeToggle<cr>", desc = "Toggle file tree" },
-      { "<leader>f", "<cmd>NvimTreeFindFile<cr>", desc = "Find current file in tree" },
+      { "<leader>f", "<cmd>NvimTreeFindFile<cr>", desc = "Find current file" },
     },
     config = function()
-      -- 禁用 netrw（避免冲突）
       vim.g.loaded_netrw = 1
       vim.g.loaded_netrwPlugin = 1
-
       require("nvim-tree").setup({
         view = { width = 32 },
-        renderer = { 
-          group_empty = true,
-          icons = {
-            show = {
-              file = true,
-              folder = true,
-              folder_arrow = true,
-              git = true,
-            },
-          },
-        },
+        renderer = { group_empty = true },
         filters = { dotfiles = false },
         git = { enable = true, ignore = false },
       })
       
-      -- 兼容：提供 :NERDTreeToggle 命令别名
-      vim.api.nvim_create_user_command("NERDTreeToggle", function()
-        vim.cmd("NvimTreeToggle")
-      end, {})
-      vim.api.nvim_create_user_command("NERDTreeFind", function()
-        vim.cmd("NvimTreeFindFile")
-      end, {})
+      -- 兼容命令
+      vim.api.nvim_create_user_command("NERDTreeToggle", "NvimTreeToggle", {})
+      vim.api.nvim_create_user_command("NERDTreeFind", "NvimTreeFindFile", {})
     end,
   },
 
-  -- 状态栏（替换 vim-airline）
+  -- 状态栏
   {
     "nvim-lualine/lualine.nvim",
     dependencies = { "nvim-tree/nvim-web-devicons" },
     config = function()
-      require("lualine").setup({ 
-        options = { 
-          theme = "auto",
-          component_separators = { left = '|', right = '|'},
-          section_separators = { left = '', right = ''},
-        },
-        sections = {
-          lualine_a = {'mode'},
-          lualine_b = {'branch', 'diff', 'diagnostics'},
-          lualine_c = {'filename'},
-          lualine_x = {'encoding', 'fileformat', 'filetype'},
-          lualine_y = {'progress'},
-          lualine_z = {'location'}
-        },
-      })
+      require("lualine").setup({ options = { theme = "auto" } })
     end,
   },
 
-  -- which-key（Lua 版）
+  -- which-key
   {
     "folke/which-key.nvim",
     event = "VeryLazy",
     config = function()
-      require("which-key").setup({
-        plugins = { spelling = true },
-      })
+      require("which-key").setup({ plugins = { spelling = true } })
     end,
   },
 
-  -- Git 增强（保留）
+  -- Git 增强
   {
     "lewis6991/gitsigns.nvim",
     event = { "BufReadPre", "BufNewFile" },
@@ -177,7 +146,7 @@ lazy.setup({
     },
   },
 
-  -- Telescope（保留）
+  -- Telescope
   {
     "nvim-telescope/telescope.nvim",
     branch = "0.1.x",
@@ -190,34 +159,20 @@ lazy.setup({
       { "<leader>fo", function() require("telescope.builtin").oldfiles() end,   desc = "Recent files" },
     },
     config = function()
-      require("telescope").setup({
-        defaults = {
-          mappings = {
-            i = {
-              ["<C-u>"] = false,
-              ["<C-d>"] = false,
-            },
-          },
-        },
-      })
+      require("telescope").setup({ defaults = { mappings = { i = { ["<C-u>"] = false, ["<C-d>"] = false } } } })
     end,
   },
 
-  -- Treesitter（替代 vim-cpp-modern 的主力高亮）
+  -- Treesitter
   {
     "nvim-treesitter/nvim-treesitter",
     build = ":TSUpdate",
     event = { "BufReadPost", "BufNewFile" },
-    dependencies = {
-      "nvim-treesitter/nvim-treesitter-textobjects",
-    },
+    dependencies = { "nvim-treesitter/nvim-treesitter-textobjects" },
     opts = {
       ensure_installed = { "c", "cpp", "lua", "vim", "vimdoc", "query", "python", "bash" },
       auto_install = true,
-      highlight = { 
-        enable = true,
-        additional_vim_regex_highlighting = false,
-      },
+      highlight = { enable = true, additional_vim_regex_highlighting = false },
       indent = { enable = true },
       incremental_selection = {
         enable = true,
@@ -234,8 +189,10 @@ lazy.setup({
     end,
   },
 
-  -- LSP 基座（替换 YCM/ALE 的补全/诊断职责）
-  { "neovim/nvim-lspconfig" },
+  -- ⚠️  注意：不再需要 nvim-lspconfig 插件
+  -- Neovim 0.11+ 使用内置 vim.lsp.config
+
+  -- Mason（LSP 服务器管理）
   { 
     "williamboman/mason.nvim", 
     build = ":MasonUpdate",
@@ -248,15 +205,6 @@ lazy.setup({
             package_uninstalled = "✗"
           }
         }
-      })
-    end,
-  },
-  { 
-    "williamboman/mason-lspconfig.nvim",
-    config = function()
-      require("mason-lspconfig").setup({ 
-        ensure_installed = { "clangd", "lua_ls" },
-        automatic_installation = true,
       })
     end,
   },
@@ -275,7 +223,7 @@ lazy.setup({
     },
   },
 
-  -- 格式化（替代 ALE 的大部分 fixers）
+  -- 格式化
   {
     "stevearc/conform.nvim",
     event = { "BufWritePre" },
@@ -296,14 +244,14 @@ lazy.setup({
         lua = { "stylua" },
         python = { "black" },
       },
-      format_on_save = nil, -- 禁用自动保存格式化，手动触发
+      format_on_save = nil,
     },
   },
 
-  -- AsyncRun（保留原有工作流）
+  -- AsyncRun（保留）
   { "skywind3000/asyncrun.vim" },
 
-  -- 注释插件（替代 vim-commentary）
+  -- 注释插件
   {
     "numToStr/Comment.nvim",
     event = { "BufReadPre", "BufNewFile" },
@@ -316,21 +264,17 @@ lazy.setup({
   performance = {
     rtp = {
       disabled_plugins = {
-        "gzip",
-        "tarPlugin",
-        "tohtml",
-        "tutor",
-        "zipPlugin",
+        "gzip", "tarPlugin", "tohtml", "tutor", "zipPlugin",
       },
     },
   },
 })
 
 ------------------------------------------------------------
--- 3) LSP / 补全 / 诊断：尽量贴近原有快捷键
+-- 3) 使用 vim.lsp.config (Neovim 0.11+ 新方式)
 ------------------------------------------------------------
 
--- nvim-cmp 基本配置（<C-Space> 手动补全，回车确认）
+-- nvim-cmp 补全配置
 local cmp = require("cmp")
 local luasnip = require("luasnip")
 require("luasnip.loaders.from_vscode").lazy_load()
@@ -350,22 +294,14 @@ cmp.setup({
     ["<C-e>"] = cmp.mapping.abort(),
     ["<CR>"] = cmp.mapping.confirm({ select = true }),
     ["<Tab>"] = cmp.mapping(function(fallback)
-      if cmp.visible() then 
-        cmp.select_next_item()
-      elseif luasnip.expand_or_jumpable() then 
-        luasnip.expand_or_jump()
-      else 
-        fallback() 
-      end
+      if cmp.visible() then cmp.select_next_item()
+      elseif luasnip.expand_or_jumpable() then luasnip.expand_or_jump()
+      else fallback() end
     end, { "i", "s" }),
     ["<S-Tab>"] = cmp.mapping(function(fallback)
-      if cmp.visible() then 
-        cmp.select_prev_item()
-      elseif luasnip.jumpable(-1) then 
-        luasnip.jump(-1)
-      else 
-        fallback() 
-      end
+      if cmp.visible() then cmp.select_prev_item()
+      elseif luasnip.jumpable(-1) then luasnip.jump(-1)
+      else fallback() end
     end, { "i", "s" }),
     ["<Down>"] = cmp.mapping.select_next_item(),
     ["<Up>"] = cmp.mapping.select_prev_item(),
@@ -389,25 +325,10 @@ cmp.setup({
   },
 })
 
-------------------------------------------------------------
--- 3) LSP 配置：使用 nvim-lspconfig (兼容 Neovim 0.11+)
-------------------------------------------------------------
-
--- 抑制 Neovim 0.11+ 的 lspconfig 过渡警告
--- nvim-lspconfig 团队正在适配新 API，当前版本仍使用旧接口但完全可用
-local notify = vim.notify
-vim.notify = function(msg, ...)
-  if msg:match("lspconfig") then
-    return
-  end
-  notify(msg, ...)
-end
-
--- LSP 服务器配置
-local lspconfig = require("lspconfig")
+-- 获取补全能力
 local capabilities = require("cmp_nvim_lsp").default_capabilities()
 
--- 统一 on_attach：绑定常用按键（接近 ALE/YCM 习惯）
+-- 统一 on_attach 函数
 local on_attach = function(client, bufnr)
   local map = function(mode, lhs, rhs, desc)
     vim.keymap.set(mode, lhs, rhs, { buffer = bufnr, desc = desc })
@@ -423,11 +344,9 @@ local on_attach = function(client, bufnr)
   map("n", "<C-k>", vim.lsp.buf.signature_help, "Signature help")
   map("n", "<leader>rn", vim.lsp.buf.rename, "Rename symbol")
   map({"n","v"}, "<leader>ca", vim.lsp.buf.code_action, "Code action")
-  map({"n","v"}, "<leader>lf", function() 
-    vim.lsp.buf.format({ async = false }) 
-  end, "Format (like ALEFix)")
+  map({"n","v"}, "<leader>lf", function() vim.lsp.buf.format({ async = false }) end, "Format")
   
-  -- 诊断导航：模拟 ALE 的 [e / ]e
+  -- 诊断导航
   map("n", "[e", vim.diagnostic.goto_prev, "Prev diagnostic")
   map("n", "]e", vim.diagnostic.goto_next, "Next diagnostic")
   map("n", "[d", vim.diagnostic.goto_prev, "Prev diagnostic")
@@ -436,40 +355,56 @@ local on_attach = function(client, bufnr)
   map("n", "<leader>q", vim.diagnostic.setloclist, "Quickfix diagnostics")
 end
 
--- 配置 clangd（C/C++）
-lspconfig.clangd.setup({ 
-  capabilities = capabilities, 
-  on_attach = on_attach,
-  cmd = {
-    "clangd",
-    "--background-index",
-    "--clang-tidy",
-    "--header-insertion=iwyu",
-    "--completion-style=detailed",
-    "--function-arg-placeholders",
-  },
-  filetypes = { "c", "cpp", "objc", "objcpp", "cuda" },
-})
+-- ⚠️  Neovim 0.11+ 新 API（实验性）
+-- 注意：此 API 可能在未来版本中变化
+-- 
+-- 当前状态（2025-10）：vim.lsp.config 仍在开发中
+-- 推荐继续使用 nvim-lspconfig 直到此 API 稳定
 
--- 配置 lua_ls（Lua）
-lspconfig.lua_ls.setup({
-  capabilities = capabilities,
-  on_attach = on_attach,
-  settings = { 
-    Lua = { 
-      diagnostics = { 
-        globals = { "vim" } 
+-- 检查是否支持新 API
+if vim.lsp.config then
+  vim.notify("Using Neovim 0.11+ native LSP config", vim.log.levels.INFO)
+  
+  -- 使用新的配置方式
+  vim.lsp.config({
+    on_attach = on_attach,
+    capabilities = capabilities,
+    
+    servers = {
+      clangd = {
+        cmd = {
+          "clangd",
+          "--background-index",
+          "--clang-tidy",
+          "--header-insertion=iwyu",
+          "--completion-style=detailed",
+          "--function-arg-placeholders",
+        },
+        filetypes = { "c", "cpp", "objc", "objcpp", "cuda" },
       },
-      workspace = {
-        library = vim.api.nvim_get_runtime_file("", true),
-        checkThirdParty = false,
+      
+      lua_ls = {
+        settings = {
+          Lua = {
+            diagnostics = { globals = { "vim" } },
+            workspace = {
+              library = vim.api.nvim_get_runtime_file("", true),
+              checkThirdParty = false,
+            },
+            telemetry = { enable = false },
+          },
+        },
       },
-      telemetry = { enable = false },
-    } 
-  },
-})
+    },
+  })
+else
+  -- 降级到传统方式（需要 nvim-lspconfig 插件）
+  vim.notify("vim.lsp.config not available, falling back to nvim-lspconfig", vim.log.levels.WARN)
+  vim.notify("请使用仓库中的 config.vim 或旧版 init.lua（nvim-lspconfig）", vim.log.levels.ERROR)
+  return
+end
 
--- 诊断符号配置（类似 ALE 的错误标记）
+-- 诊断配置
 vim.diagnostic.config({
   virtual_text = true,
   signs = true,
@@ -491,12 +426,11 @@ for type, icon in pairs(signs) do
 end
 
 ------------------------------------------------------------
--- 4) 其他兼容与小功能
+-- 4) 其他配置（沿用经典工作流）
 ------------------------------------------------------------
 
--- AsyncRun 快捷键配置（保持原有习惯）
+-- AsyncRun 快捷键
 vim.g.asyncrun_open = 6
-
 vim.keymap.set("n", "<F7>", ":AsyncRun -save=2 make<CR>", { desc = "Make" })
 vim.keymap.set("n", "<F8>", ":AsyncRun -save=2 make run<CR>", { desc = "Make run" })
 vim.keymap.set("n", "<F6>", ":AsyncRun -save=2 make test<CR>", { desc = "Make test" })
@@ -514,7 +448,7 @@ vim.keymap.set("n", "<F9>", function()
   end
 end, { desc = "Build current file" })
 
--- F4: 运行当前二进制
+-- F4: 运行二进制
 vim.keymap.set("n", "<F4>", function()
   local binary = vim.fn.expand("%:r")
   if vim.fn.filereadable(binary) == 1 then
@@ -524,57 +458,29 @@ vim.keymap.set("n", "<F4>", function()
   end
 end, { desc = "Run current binary" })
 
--- 兼容命令：用 conform.nvim 模拟 :ALEFix
+-- 兼容命令
 vim.api.nvim_create_user_command("ALEFix", function()
   require("conform").format({ async = false, lsp_fallback = true })
 end, { desc = "Format current buffer (ALEFix compatibility)" })
 
--- Tab/Window 管理（保持原有键位）
+-- Tab/Window 管理
 vim.keymap.set("n", "<leader>tn", ":tabnew<CR>", { desc = "New tab" })
 vim.keymap.set("n", "<leader>tc", ":tabclose<CR>", { desc = "Close tab" })
 vim.keymap.set("n", "<leader>q", ":q<CR>", { desc = "Quit" })
 
--- 快速编辑助手（保持原有习惯）
+-- 快速编辑
 vim.keymap.set("i", "fj", "<Esc>", { desc = "Exit insert mode" })
 vim.keymap.set("i", "vv", "<Esc>", { desc = "Exit insert mode" })
 vim.keymap.set("n", "<C-A>", "ggVG", { desc = "Select all" })
 vim.keymap.set("n", "<leader>k", ":g/^$/d<CR>", { desc = "Delete blank lines" })
 
--- 注释键位（兼容 vim-commentary 习惯）
+-- 注释键位
 vim.keymap.set("n", "<leader>cc", function()
   return vim.v.count == 0 and "<Plug>(comment_toggle_linewise_current)" or "<Plug>(comment_toggle_linewise_count)"
 end, { expr = true, desc = "Toggle comment" })
 vim.keymap.set("v", "<leader>cc", "<Plug>(comment_toggle_linewise_visual)", { desc = "Toggle comment" })
 
--- MagicInstall 命令（Lua 版本）
-vim.api.nvim_create_user_command("MagicInstall", function()
-  local src = vim.fn.expand("%:p")
-  if vim.fn.filereadable(src) == 0 then
-    vim.api.nvim_err_writeln("Open this file from repo root: init.lua")
-    return
-  end
-
-  local targets = {
-    vim.fn.expand("~/.config/nvim/init.lua"),
-    vim.fn.expand("~/.vim/init.lua"),
-  }
-
-  for _, target in ipairs(targets) do
-    local dir = vim.fn.fnamemodify(target, ":h")
-    vim.fn.mkdir(dir, "p")
-    
-    local content = vim.fn.readfile(src)
-    if vim.fn.writefile(content, target) == 0 then
-      print("Wrote: " .. target)
-    else
-      vim.api.nvim_err_writeln("Failed to write: " .. target)
-    end
-  end
-  
-  print("MagicInstall complete. Restart Neovim.")
-end, { desc = "Install config to common locations" })
-
--- 高亮复制的文本
+-- 高亮复制文本
 vim.api.nvim_create_autocmd("TextYankPost", {
   desc = "Highlight when yanking text",
   group = vim.api.nvim_create_augroup("highlight-yank", { clear = true }),
@@ -583,5 +489,5 @@ vim.api.nvim_create_autocmd("TextYankPost", {
   end,
 })
 
--- 最后提示
-vim.notify("Neovim C/C++ IDE config loaded! Press <Space> to see leader key bindings.", vim.log.levels.INFO)
+-- 完成提示
+vim.notify("Neovim modern config loaded (vim.lsp.config)! Press <Space> for keybindings.", vim.log.levels.INFO)

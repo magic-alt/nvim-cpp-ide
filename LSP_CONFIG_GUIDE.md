@@ -11,70 +11,77 @@ nvim-lspconfig is deprecated. Use vim.lsp.config instead.
 
 ---
 
-## 📊 三种配置方式对比
+## 📊 两种配置方式对比
 
-### 方案 A: 抑制警告（推荐 ✅）
+### 方案 A: Neovim 0.11+ 原生 API（默认 ✅）
 
-**文件**: `init.lua` (当前使用)
+**文件**: `init.lua`
 
 **优势**:
-- ✅ 使用成熟稳定的 `nvim-lspconfig`
-- ✅ 社区支持完善，文档齐全
-- ✅ 兼容 Neovim 0.8+
-- ✅ 只是抑制过渡期警告
-- ✅ 功能完全正常
+- ✅ 直接使用 `vim.lsp.config`，减少对第三方插件的依赖
+- ✅ 与 lazy.nvim、Mason 的初始化流程无缝整合
+- ✅ 代码更精简，便于后续跟随 Neovim 官方演进
+
+**注意事项**:
+- ⚠️ 需要 Neovim 0.11 nightly 或以上版本（提供 `vim.lsp.config`）
+- ⚠️ API 仍在快速演进，如遇到重大变更请关注 `CHANGELOG.md`
 
 **实现方式**:
 ```lua
--- 抑制 lspconfig 过渡警告
-local notify = vim.notify
-vim.notify = function(msg, ...)
-  if msg:match("lspconfig") then
-    return
-  end
-  notify(msg, ...)
-end
-
--- 正常使用 nvim-lspconfig
-local lspconfig = require("lspconfig")
-lspconfig.clangd.setup({ ... })
-lspconfig.lua_ls.setup({ ... })
-```
-
-**适合**: 所有用户，特别是需要稳定环境的项目
-
----
-
-### 方案 B: 使用新 API（实验性 ⚠️）
-
-**文件**: `init-modern.lua` (提供备选)
-
-**优势**:
-- ✅ 使用 Neovim 0.11+ 原生 API
-- ✅ 无需 `nvim-lspconfig` 插件
-- ✅ 更简洁的配置语法
-
-**劣势**:
-- ❌ API 还在开发中（可能变化）
-- ❌ 文档不完整
-- ❌ 社区插件可能不兼容
-- ❌ 只支持 Neovim 0.11+
-
-**实现方式**:
-```lua
--- Neovim 0.11+ 新方式（实验性）
 vim.lsp.config({
   on_attach = on_attach,
   capabilities = capabilities,
-  
   servers = {
-    clangd = { cmd = {...}, filetypes = {...} },
-    lua_ls = { settings = {...} },
-  }
+    clangd = {
+      cmd = {
+        "clangd",
+        "--background-index",
+        "--clang-tidy",
+        "--header-insertion=iwyu",
+        "--completion-style=detailed",
+        "--function-arg-placeholders",
+      },
+      filetypes = { "c", "cpp", "objc", "objcpp", "cuda" },
+    },
+    lua_ls = {
+      settings = {
+        Lua = {
+          diagnostics = { globals = { "vim" } },
+          workspace = { checkThirdParty = false },
+          telemetry = { enable = false },
+        },
+      },
+    },
+  },
 })
 ```
 
-**适合**: 尝鲜用户，实验性项目
+**适合**: 已升级到 Neovim 0.11+、希望体验最新原生 LSP 流程的用户
+
+---
+
+### 方案 B: 继续使用 `nvim-lspconfig`（兼容 0.8~0.10 ⚠️）
+
+**文件**: `config.vim`（VimScript 版本）或仓库历史版本中的 `init.lua`
+
+**优势**:
+- ✅ 支持稳定版 Neovim 0.8~0.10 以及 Vim 8.0+
+- ✅ 生态成熟，文档、示例丰富
+
+**注意事项**:
+- ⚠️ 需要继续安装 `nvim-lspconfig`、`mason-lspconfig` 等插件
+- ⚠️ 建议通过 `CHANGELOG.md` 确认兼容性更新
+
+**切换方式**:
+```powershell
+# 使用 VimScript 版本（兼容 0.8~0.10）
+Copy-Item config.vim "$env:LOCALAPPDATA\nvim\init.vim" -Force
+
+# 或者检出历史版本的 init.lua（v0.1.0 仍基于 nvim-lspconfig）
+git checkout v0.1.0 init.lua
+```
+
+**适合**: 仍在使用 Neovim 0.10 及更早版本、或需要 Vim 兼容性的环境
 
 ---
 
@@ -82,39 +89,14 @@ vim.lsp.config({
 
 **实现方式**: 什么都不做
 
-**问题**: 每次启动都看到警告，影响体验
+**问题**: 每次启动都看到警告，且无法享受新 API 优化
 
 ---
 
 ## 🎯 推荐选择
 
-### 大多数用户 → **方案 A** (当前配置)
-
-**理由**:
-1. `nvim-lspconfig` 是成熟的解决方案
-2. 有数千个项目在使用
-3. 文档完整，社区支持好
-4. 只需抑制警告即可
-
-### 尝鲜用户 → **方案 B** (init-modern.lua)
-
-**如何切换**:
-```powershell
-# 备份当前配置
-Copy-Item init.lua init-lspconfig.lua
-
-# 使用新配置
-Copy-Item init-modern.lua init.lua
-
-# 重启 Neovim
-nvim
-```
-
-**切换回来**:
-```powershell
-Copy-Item init-lspconfig.lua init.lua
-nvim
-```
+- **已经升级 Neovim 0.11+** → 选择方案 A（仓库默认配置）
+- **必须保持兼容 0.8~0.10 或 Vim** → 选择方案 B（使用 `config.vim` 或 v0.1.0 的 `init.lua`）
 
 ---
 
@@ -210,28 +192,24 @@ int main() {
 
 ## 🎯 总结
 
-### 当前配置（推荐）✅
+### 当前配置（默认）✅
 
 **文件**: `init.lua`
-- ✅ 使用 `nvim-lspconfig`（成熟）
-- ✅ 抑制过渡期警告
-- ✅ 功能完全正常
-- ✅ 社区支持完善
+- ✅ 使用 `vim.lsp.config` 原生 API
+- ✅ 与 lazy.nvim、Mason 深度集成
+- ✅ 针对 Neovim 0.11+ 调优
 
-### 备选配置（实验）⚠️
+### 兼容配置（旧版）⚠️
 
-**文件**: `init-modern.lua`
-- ⚠️  使用 `vim.lsp.config`（实验）
-- ⚠️  API 可能变化
-- ⚠️  仅供尝鲜
+**文件**: `config.vim` 或 v0.1.0 的 `init.lua`
+- ⚠️ 基于 `nvim-lspconfig`，适合 Neovim 0.8~0.10 / Vim 8.0+
+- ⚠️ 需要保留旧版依赖与插件
 
 ---
 
 ## 💡 建议
 
-1. **继续使用当前配置** (`init.lua`)
-2. **关注 Neovim 发布说明**，等待 `vim.lsp.config` API 稳定
-3. **定期更新插件**: `:Lazy sync`
-4. **如果好奇**，可以测试 `init-modern.lua`，但建议备份
-
-**警告已被抑制，功能完全正常，可以放心使用！** ✅
+1. **Neovim 0.11+ 用户** → 按默认 `init.lua` 使用，并定期 `:Lazy sync` / `:Mason` 更新。
+2. **需要旧版兼容** → 复制 `config.vim` 或检出 v0.1.0 的 `init.lua`。
+3. **关注 `CHANGELOG.md`** → 第一时间获知兼容性修复与 API 变动。
+4. **遇到问题** → 可使用 `install-lua.ps1 -FirstLaunchOnly` 重新执行 Lazy 同步。

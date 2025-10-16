@@ -20,13 +20,14 @@ https://github.com/magic-alt/nvim-cpp-ide
 
 我们提供了**两个版本**供您选择：
 
-### 🔥 **Lua 版本（推荐 / Recommended for Neovim 0.10+）**
+### 🔥 **Lua 版本（推荐 / Recommended for Neovim 0.11+）**
 - ⚡ **lazy.nvim** - 极速插件管理
 - 🎯 **Native LSP** - clangd, lua_ls
 - 💎 **nvim-cmp** - 现代化补全
 - 🌲 **Treesitter** - 精准语法高亮
 - 📦 **Mason** - LSP 服务器一键安装
 - 🚀 **更快的启动速度** (~80ms vs ~150ms)
+- ⚠️ **Neovim 0.11+** - 利用 `vim.lsp.config` 原生接口
 
 👉 **[查看 Lua 迁移指南 / See Lua Migration Guide →](LUA_MIGRATION_GUIDE.md)**
 
@@ -43,8 +44,9 @@ https://github.com/magic-alt/nvim-cpp-ide
 
 ## ✨ Highlights / 功能亮点
 
-- 🚀 **One-command setup / 一键部署**：`install.sh` 或内置 `:MagicInstall`（Vim/Neovim 均可）。  
-- 💡 **Smart completion**：**YouCompleteMe** tuned for C/C++/Python（2-char trigger，clangd）。  
+- 🚀 **One-command setup / 一键部署**：`install.sh` 或内置 `:MagicInstall`（Vim/Neovim 均可）。
+- 🪟 **Unified Windows bootstrap**：`install-lua.ps1` 支持远程安装、本地调试与首次插件同步。
+- 💡 **Smart completion**：**YouCompleteMe** tuned for C/C++/Python（2-char trigger，clangd）。
 - 🛡️ **On-the-fly diagnostics**：**ALE** 预置 GCC/C++17/交叉编译参数。  
 - ⚙️ **Async build/run**：**AsyncRun** 预置 `make test/run`、单文件 GCC 快速编译。  
 - 🌳 **Project nav**：NERDTree 快速跳转（`<leader>e`/`<leader>f`/`<leader>m`）。  
@@ -81,6 +83,8 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; `
 iwr https://raw.githubusercontent.com/magic-alt/nvim-cpp-ide/main/install-lua.ps1 -UseBasicParsing | iex
 ```
 
+> 脚本会自动备份旧配置、安装最新 `init.lua` 并执行 `Lazy! sync`。如需仅重新引导插件，运行 `.\install-lua.ps1 -FirstLaunchOnly`；本地仓库调试可使用 `.\install-lua.ps1 -Local`（默认会触发同样的首次同步）。
+
 ### 📦 VimScript 版本（兼容 Vim 8.0+ / Neovim 0.8+）
 
 #### Linux/macOS
@@ -109,12 +113,12 @@ iwr https://raw.githubusercontent.com/magic-alt/nvim-cpp-ide/main/install.ps1 -U
 
 ## 🧩 Features Matrix / 配置特性一览
 
-### Lua 版本 (init.lua - Neovim 0.10+)
+### Lua 版本 (init.lua - Neovim 0.11+)
 
 | 功能             | 插件                                | 说明                        |
 | -------------- | --------------------------------- | ------------------------- |
 | Plugin Manager | **lazy.nvim**                     | 懒加载、极速启动                  |
-| LSP            | **nvim-lspconfig**, **mason.nvim** | clangd, lua_ls 原生支持      |
+| LSP            | **vim.lsp.config** (Neovim 0.11+), **mason.nvim** | clangd, lua_ls 原生支持      |
 | Completion     | **nvim-cmp**, **LuaSnip**         | 现代化补全引擎                   |
 | Formatting     | **conform.nvim**                  | clang-format 等一键格式化        |
 | Diagnostics    | Native LSP diagnostics            | 实时错误提示                    |
