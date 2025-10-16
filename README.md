@@ -33,6 +33,7 @@ https://github.com/magic-alt/nvim-cpp-ide
 
 ## ⚡ Quick Start / 快速开始（3 行命令）
 
+### Linux/macOS
 ```bash
 # 1) 备份你的旧配置 / Backup
 mv -f ~/.config/nvim ~/.config/nvim.bak 2>/dev/null || true
@@ -43,6 +44,13 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/magic-alt/nvim-cpp-ide/m
 
 # 3) 打开编辑器等待插件初始化 / Open and let it bootstrap
 nvim || vim
+```
+
+### Windows (PowerShell)
+```powershell
+# 一键安装 / One-command install
+Set-ExecutionPolicy Bypass -Scope Process -Force; `
+iwr https://raw.githubusercontent.com/magic-alt/nvim-cpp-ide/main/install.ps1 -UseBasicParsing | iex
 ```
 
 > 或者在 Vim/Neovim 中执行：`:MagicInstall`（已内置于 `config.vim`）。
