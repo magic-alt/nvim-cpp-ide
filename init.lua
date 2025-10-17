@@ -346,61 +346,56 @@ local on_attach = function(client, bufnr)
   map({"n","v"}, "<leader>ca", vim.lsp.buf.code_action, "Code action")
   map({"n","v"}, "<leader>lf", function() vim.lsp.buf.format({ async = false }) end, "Format")
   
-  -- 诊断导航
-  map("n", "[e", vim.diagnostic.goto_prev, "Prev diagnostic")
-  map("n", "]e", vim.diagnostic.goto_next, "Next diagnostic")
+  -- 诊断导航（注意：<leader>e 已被 NvimTreeToggle 占用）
   map("n", "[d", vim.diagnostic.goto_prev, "Prev diagnostic")
   map("n", "]d", vim.diagnostic.goto_next, "Next diagnostic")
-  map("n", "<leader>e", vim.diagnostic.open_float, "Line diagnostics")
   map("n", "<leader>q", vim.diagnostic.setloclist, "Quickfix diagnostics")
+  map("n", "gl", vim.diagnostic.open_float, "Line diagnostics")
 end
 
--- ⚠️  Neovim 0.11+ 新 API（实验性）
--- 注意：此 API 可能在未来版本中变化
--- 
--- 当前状态（2025-10）：vim.lsp.config 仍在开发中
--- 推荐继续使用 nvim-lspconfig 直到此 API 稳定
+-- ⚠️  Neovim 0.11+ 新 API（2025-10-17 修正）
+-- 注意：vim.lsp.config 需要 (name, opts) 两个参数，然后用 vim.lsp.enable(name) 启用
 
 -- 检查是否支持新 API
 if vim.lsp.config then
-  vim.notify("Using Neovim 0.11+ native LSP config", vim.log.levels.INFO)
-  
-  -- 使用新的配置方式
-  vim.lsp.config({
-    on_attach = on_attach,
-    capabilities = capabilities,
-    
-    servers = {
-      clangd = {
-        cmd = {
-          "clangd",
-          "--background-index",
-          "--clang-tidy",
-          "--header-insertion=iwyu",
-          "--completion-style=detailed",
-          "--function-arg-placeholders",
+  -- 定义公共项
+  local common = { on_attach = on_attach, capabilities = capabilities }
+
+  -- 定义 clangd
+  vim.lsp.config("clangd", vim.tbl_deep_extend("force", common, {
+    cmd = {
+      "clangd",
+      "--background-index",
+      "--clang-tidy",
+      "--header-insertion=iwyu",
+      "--completion-style=detailed",
+      "--function-arg-placeholders",
+    },
+    filetypes = { "c", "cpp", "objc", "objcpp", "cuda" },
+  }))
+
+  -- 定义 lua_ls
+  vim.lsp.config("lua_ls", vim.tbl_deep_extend("force", common, {
+    settings = {
+      Lua = {
+        diagnostics = { globals = { "vim" } },
+        workspace = {
+          library = vim.api.nvim_get_runtime_file("", true),
+          checkThirdParty = false,
         },
-        filetypes = { "c", "cpp", "objc", "objcpp", "cuda" },
-      },
-      
-      lua_ls = {
-        settings = {
-          Lua = {
-            diagnostics = { globals = { "vim" } },
-            workspace = {
-              library = vim.api.nvim_get_runtime_file("", true),
-              checkThirdParty = false,
-            },
-            telemetry = { enable = false },
-          },
-        },
+        telemetry = { enable = false },
       },
     },
-  })
+    filetypes = { "lua" }, -- 显式写上更清晰
+  }))
+
+  -- 启用（会按上面的 filetypes 自动生效）
+  vim.lsp.enable("clangd")
+  vim.lsp.enable("lua_ls")
+
+  vim.notify("Using Neovim 0.11+ native LSP config", vim.log.levels.INFO)
 else
-  -- 降级到传统方式（需要 nvim-lspconfig 插件）
   vim.notify("vim.lsp.config not available, falling back to nvim-lspconfig", vim.log.levels.WARN)
-  vim.notify("请使用仓库中的 config.vim 或旧版 init.lua（nvim-lspconfig）", vim.log.levels.ERROR)
   return
 end
 
