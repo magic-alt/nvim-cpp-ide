@@ -443,15 +443,35 @@ vim.keymap.set("n", "<F9>", function()
   end
 end, { desc = "Build current file" })
 
--- F4: 运行二进制
+-- F4: 运行当前文件对应的可执行文件（Win/Unix 通用）
 vim.keymap.set("n", "<F4>", function()
-  local binary = vim.fn.expand("%:r")
-  if vim.fn.filereadable(binary) == 1 then
-    vim.cmd("AsyncRun " .. binary)
+  local root = vim.fn.expand("%:r")           -- 不带扩展名的基名
+  local is_win = vim.fn.has("win32") == 1 or vim.fn.has("win64") == 1 or vim.fn.has("win32unix") == 1
+
+  local exe_path
+  if is_win then
+    -- Windows: 优先找 xxx.exe；若你自己生成了无后缀的文件也兼容
+    if vim.fn.filereadable(root .. ".exe") == 1 then
+      exe_path = root .. ".exe"
+    elseif vim.fn.filereadable(root) == 1 then
+      exe_path = root
+    end
+  else
+    -- 类 Unix：优先找 ./xxx（已在当前目录）
+    if vim.fn.filereadable(root) == 1 then
+      exe_path = "./" .. root
+    elseif vim.fn.filereadable(root .. ".out") == 1 then
+      exe_path = "./" .. root .. ".out"
+    end
+  end
+
+  if exe_path then
+    -- shellescape 处理空格等字符
+    vim.cmd("AsyncRun " .. vim.fn.shellescape(exe_path))
   else
     print("Binary not found. Build first (F9).")
   end
-end, { desc = "Run current binary" })
+end, { desc = "Run compiled binary (portable)" })
 
 -- 兼容命令
 vim.api.nvim_create_user_command("ALEFix", function()
