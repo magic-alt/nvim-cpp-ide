@@ -12,11 +12,14 @@ jobs:
     env:
       NVIM_CPP_IDE_PROFILE: minimal
       NVIM_CPP_IDE_QUIET: "1"
-      XDG_DATA_HOME: ${{ runner.temp }}/nvim-data
-      XDG_STATE_HOME: ${{ runner.temp }}/nvim-state
-      XDG_CACHE_HOME: ${{ runner.temp }}/nvim-cache
     steps:
       - uses: actions/checkout@v4
+
+      - name: Isolate Neovim data directories
+        run: |
+          echo "XDG_DATA_HOME=$RUNNER_TEMP/nvim-data" >> "$GITHUB_ENV"
+          echo "XDG_STATE_HOME=$RUNNER_TEMP/nvim-state" >> "$GITHUB_ENV"
+          echo "XDG_CACHE_HOME=$RUNNER_TEMP/nvim-cache" >> "$GITHUB_ENV"
 
       - name: Install Neovim 0.11.7
         run: |
