@@ -3,6 +3,8 @@ local project_config = require("nvim_cpp_ide.project.config")
 local path = require("nvim_cpp_ide.project.path")
 
 local M = {}
+local task_history = {}
+local last_task = nil
 
 local actions = { "configure", "build", "test", "lint", "format" }
 local action_set = {}
@@ -133,7 +135,16 @@ local function task_record(task, result)
     argv = task.argv,
     code = result.code,
     signal = result.signal,
+    completed_at = os.date("!%Y-%m-%dT%H:%M:%SZ"),
   }
+end
+
+local function remember_task(task, result)
+  local record = task_record(task, result)
+  last_task = record
+  task_history[task.action] = record
+  vim.g.nvim_cpp_ide_last_task = record
+  return record
 end
 
 local function combined_lines(result)
@@ -159,7 +170,7 @@ local function run_sync(task, opts)
     text = true,
   }):wait()
 
-  vim.g.nvim_cpp_ide_last_task = task_record(task, result)
+  remember_task(task, result)
 
   if result.stdout and result.stdout ~= "" then
     io.stdout:write(result.stdout)
@@ -186,7 +197,7 @@ local function run_async(task)
     text = true,
   }, function(result)
     vim.schedule(function()
-      vim.g.nvim_cpp_ide_last_task = task_record(task, result)
+      remember_task(task, result)
       local lines = combined_lines(result)
       vim.fn.setqflist({}, " ", {
         title = ("Project %s (%s)"):format(task.action, task.backend),
@@ -257,6 +268,13 @@ function M.info(opts)
   end
 
   return result
+end
+
+function M.results()
+  return {
+    last = last_task and vim.deepcopy(last_task) or nil,
+    by_action = vim.deepcopy(task_history),
+  }
 end
 
 local function show_info()

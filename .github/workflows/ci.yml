@@ -129,6 +129,67 @@ jobs:
           fi
           test "$(grep -c '^@AGENTS.md$' "$fixture/CLAUDE.md")" -eq 1
 
+      - name: Exercise IDE to agent context bridge
+        env:
+          NVIM_CPP_IDE_SKIP_PLUGINS: "1"
+          NVIM_CPP_IDE_QUIET: "1"
+          NVIM_CPP_IDE_PROFILE: "agent"
+        run: |
+          config="$GITHUB_WORKSPACE/init.lua"
+          fixture="$GITHUB_WORKSPACE/tests/fixtures/agent-project"
+          rm -rf "$fixture/.nvim-agent"
+
+          (
+            cd "$fixture"
+            nvim --headless -u "$config" \
+              "+edit src/main.c" \
+              "+lua local ns=vim.api.nvim_create_namespace('ci-agent-context'); local b=vim.api.nvim_get_current_buf(); local file=vim.api.nvim_buf_get_name(b); local root=vim.fn.getcwd(); vim.diagnostic.set(ns,b,{{lnum=0,col=4,severity=vim.diagnostic.severity.WARN,message='context diagnostic '..file,source='ci'}}); vim.fn.setqflist({},' ',{title='CI quickfix '..root,items={{filename=file,lnum=1,col=1,text='quickfix failure '..file,type='E'}}})" \
+              "+ProjectTask build" \
+              "+ProjectTask test" \
+              "+AgentContext" +qa
+          )
+
+          test -f "$fixture/.nvim-agent/context.json"
+          test -f "$fixture/.nvim-agent/context.md"
+          test -f "$fixture/.nvim-agent/.gitignore"
+          test "$(cat "$fixture/.nvim-agent/.gitignore")" = '*'
+
+          python3 - "$fixture/.nvim-agent/context.json" <<'PY'
+          import json, pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          data = json.loads(p.read_text())
+          assert data["schema_version"] == 1
+          assert data["project"]["root"] == "."
+          assert data["project"]["backend"] == "make"
+          assert data["current"]["file"] == "src/main.c"
+          assert data["diagnostics"]["count"] == 1
+          diagnostic = data["diagnostics"]["items"][0]
+          assert diagnostic["severity"] == "WARN"
+          assert diagnostic["message"] == "context diagnostic ./src/main.c"
+          assert data["quickfix"]["title"] == "CI quickfix ."
+          assert data["quickfix"]["count"] == 1
+          assert data["quickfix"]["items"][0]["text"] == "quickfix failure ./src/main.c"
+          assert data["task_results"]["by_action"]["build"]["code"] == 0
+          assert data["task_results"]["by_action"]["test"]["code"] == 0
+          assert data["git"]["available"] is True
+          PY
+
+          grep -q '# Neovim Agent Context' "$fixture/.nvim-agent/context.md"
+          grep -q 'context diagnostic ./src/main.c' "$fixture/.nvim-agent/context.md"
+          grep -q 'CI quickfix .' "$fixture/.nvim-agent/context.md"
+          grep -q '## Last task results' "$fixture/.nvim-agent/context.md"
+
+          if grep -Fq "$GITHUB_WORKSPACE" "$fixture/.nvim-agent/context.json" "$fixture/.nvim-agent/context.md"; then
+            echo 'Agent context leaked an absolute workspace path'
+            exit 1
+          fi
+
+          if [ -n "$(git -C "$fixture" status --short -- .nvim-agent)" ]; then
+            echo '.nvim-agent runtime snapshots polluted git status'
+            git -C "$fixture" status --short -- .nvim-agent
+            exit 1
+          fi
+
       - name: Parse PowerShell installer
         shell: pwsh
         run: |
