@@ -7,7 +7,9 @@ DEST_VIM1="${HOME}/.vim_runtime/my_configs.vim"
 DEST_VIM2="${HOME}/.vim/my_configs.vim"
 
 echo "[1/4] Backup old configs (if any)..."
-[ -d "$DEST_NVIM" ] && mv -f "$DEST_NVIM" "${DEST_NVIM}.bak.$(date +%s)" || true
+if [ -d "$DEST_NVIM" ]; then
+  mv -f "$DEST_NVIM" "${DEST_NVIM}.bak.$(date +%s)"
+fi
 
 echo "[2/4] Clone repo..."
 TMP_DIR="$(mktemp -d)"

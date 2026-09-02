@@ -1,10 +1,13 @@
 name: CI
+
 on:
-  push: { branches: [ main ] }
-  pull_request: { branches: [ main ] }
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
-  lint-and-smoke:
+  lua-config:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,13 +18,39 @@ jobs:
           sudo apt-get install -y shellcheck
           shellcheck install.sh uninstall.sh
 
-      - name: Luacheck config.vim (via selene-lua/luacheck portable)
+      - name: Install Neovim stable (0.11+)
         run: |
-          sudo apt-get install -y luarocks
-          sudo luarocks install luacheck
-          luacheck --no-color --filename config.vim || true
+          curl -fsSLo nvim.tar.gz https://github.com/neovim/neovim/releases/download/stable/nvim-linux-x86_64.tar.gz
+          tar -xzf nvim.tar.gz
+          echo "$PWD/nvim-linux-x86_64/bin" >> "$GITHUB_PATH"
 
-      - name: Headless start (Neovim)
+      - name: Verify Neovim version
         run: |
-          sudo apt-get install -y neovim
-          nvim --headless -u ./config.vim -c 'q'
+          nvim --version | head -n 3
+          nvim --headless -u NONE "+lua assert(vim.fn.has('nvim-0.11') == 1, 'Neovim 0.11+ required')" +qa
+
+      - name: Smoke-test all profiles without network plugin bootstrap
+        env:
+          NVIM_CPP_IDE_SKIP_PLUGINS: "1"
+          NVIM_CPP_IDE_QUIET: "1"
+        run: |
+          for profile in minimal cpp agent; do
+            echo "Testing profile: $profile"
+            NVIM_CPP_IDE_PROFILE="$profile" nvim --headless -u ./init.lua \
+              "+lua assert(vim.g.nvim_cpp_ide_profile == '$profile')" +qa
+          done
+
+      - name: Parse PowerShell installer
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path './install-lua.ps1'),
+            [ref]$tokens,
+            [ref]$parseErrors
+          ) | Out-Null
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | Format-List
+            exit 1
+          }
