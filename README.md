@@ -5,8 +5,8 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/magic-alt/nvim-cpp-ide/ci.yml?branch=main)](.github/workflows/ci.yml)
 
-> **CN**：3 分钟把 Neovim/Vim 变成 C/C++ 友好的 IDE，并把仓库、构建任务、Neovim 运行时状态与外部 Coding Agent 连接成可验证的 AI-native 工作流。  
-> **EN**: Turn Neovim/Vim into a C/C++ IDE in 3 minutes, with repository contracts, deterministic project tasks, and runtime context snapshots for external coding agents.
+> **CN**：3 分钟把 Neovim/Vim 变成 C/C++ 友好的 IDE，并把仓库、构建任务、Neovim 运行时状态与外部 Coding Agent 连接成可验证、可审查的 AI-native 工作流。  
+> **EN**: Turn Neovim/Vim into a C/C++ IDE in 3 minutes, with repository contracts, deterministic project tasks, runtime context snapshots, and diff-first human review for external coding agents.
 
 ## Lua edition: Neovim 0.11+
 
@@ -18,7 +18,7 @@ init.lua
     ├── core/       # editor options and keymaps
     ├── plugins/    # lazy.nvim specs
     ├── project/    # root detection + task engine + build backends
-    ├── agent/      # AGENTS.md + CLI registry + IDE ↔ Agent context bridge
+    ├── agent/      # AGENTS.md + CLI registry + context + conflict/review UX
     ├── lsp.lua
     ├── tasks.lua
     └── profile.lua
@@ -34,7 +34,7 @@ Choose a profile with `NVIM_CPP_IDE_PROFILE` or `vim.g.nvim_cpp_ide_profile`:
 |---|---|---|
 | `minimal` | lightweight editor | navigation, Treesitter, Telescope, Git/UI helpers |
 | `cpp` | default C/C++ IDE | `minimal` + clangd/LSP, completion, formatting, project task engine |
-| `agent` | agent-native terminal IDE | `cpp` + safe external-file detection, `AGENTS.md`, context snapshots, and CLI agent registry |
+| `agent` | agent-native terminal IDE | `cpp` + repository contracts, runtime context, safe external-file conflict handling, diff-first review, and CLI agent registry |
 
 Linux/macOS example:
 
@@ -75,7 +75,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; `
 iwr https://raw.githubusercontent.com/magic-alt/nvim-cpp-ide/main/install-lua.ps1 -UseBasicParsing | iex
 ```
 
-The installer backs up the previous config, installs both `init.lua` and the complete modular `lua/` tree, then runs the first lazy.nvim synchronization. Agent Foundation and Context Bridge modules therefore require no separate deployment step.
+The installer backs up the previous config, installs both `init.lua` and the complete modular `lua/` tree, then runs the first lazy.nvim synchronization. Agent Foundation, Context Bridge, conflict detection, and review modules therefore require no separate deployment step.
 
 ### Legacy VimScript version — Vim 8.0+ / older Neovim
 
@@ -162,14 +162,7 @@ Enable the `agent` profile, open a project, then create a shared repository cont
 :AgentInit
 ```
 
-`AgentInit` discovers the actual project structure and Project Task Engine state, then creates `AGENTS.md` containing:
-
-- project/root/backend information;
-- visible top-level source/documentation directories;
-- detected repository markers;
-- resolved configure/build/test/lint/format commands;
-- the equivalent headless `ProjectTask` interface;
-- generic repository-safe rules for coding agents.
+`AgentInit` discovers the actual project structure and Project Task Engine state, then creates `AGENTS.md` containing project structure, build/test commands, runtime-context guidance, and a human-review contract.
 
 An existing `AGENTS.md` is not overwritten. Explicit regeneration requires:
 
@@ -183,20 +176,7 @@ The command also creates or updates a non-destructive Claude bridge. Existing `C
 @AGENTS.md
 ```
 
-The resulting repository relationship is:
-
-```text
-                     AGENTS.md
-                         │
-             shared project contract
-                         │
-        ┌────────────────┼────────────────┐
-        │                │                │
-      Codex          Claude Code       other agents
-                         │
-                    CLAUDE.md
-                    @AGENTS.md
-```
+The generated contract explicitly tells coding agents not to stage/unstage their own changes unless requested. The Git index is reserved as the human-accepted review boundary.
 
 ### Agent registry
 
@@ -246,8 +226,6 @@ vim.g.nvim_cpp_ide_agents = {
 
 `AgentTerminal [command...]` remains the generic project-root terminal escape hatch.
 
-The agent profile also runs conservative `:checktime` checks when focus/buffer state changes, but only when the current buffer has no unsaved local modification. External agents can therefore modify files without Neovim silently overwriting local edits.
-
 See [Agent Foundation](docs/AGENT_FOUNDATION.md) for generation safety, registry customization, and scope boundaries.
 
 ## IDE ↔ Agent Context Bridge
@@ -263,6 +241,8 @@ current file / cursor / symbol hint
 Project Task Engine contract
 last configure/build/test/lint/format results
 Quickfix
+external-file conflicts
+pending/accepted review state
         ↓
 .nvim-agent/context.json
 .nvim-agent/context.md
@@ -294,12 +274,13 @@ The default output directory is disposable runtime state:
 .nvim-agent/
 ├── .gitignore
 ├── context.json
-└── context.md
+├── context.md
+└── recovery/
 ```
 
-`.nvim-agent/.gitignore` contains `*`, so context refreshes do not modify the project-root `.gitignore` or pollute `git status`.
+`.nvim-agent/.gitignore` contains `*`, so context/recovery files do not modify the project-root `.gitignore` or pollute `git status`.
 
-The persisted snapshot intentionally omits source-file contents, complete Git patches, environment variables, provider credentials, terminal history, and the machine-specific project-root path. Agents can use the snapshot to decide what to inspect next, then read the actual repository and run `git diff` themselves.
+The persisted snapshot intentionally omits source-file contents, complete Git patches, environment variables, provider credentials, terminal history, and the machine-specific project-root path. Agents use it to decide what to inspect next, then read the actual repository and diff themselves.
 
 ### Headless / CI deployment
 
@@ -327,6 +308,98 @@ This filesystem-only design works the same way over SSH, inside containers, and 
 
 See [IDE ↔ Agent Context Bridge](docs/AGENT_CONTEXT_BRIDGE.md) for the schema, privacy boundary, deployment recipes, and limitations.
 
+## Agent-safe conflicts + diff-first review
+
+External coding agents can write a file while it is open in Neovim. The agent profile now distinguishes clean buffers from unsaved local edits:
+
+```text
+External Agent edits file
+        ↓
+buffer clean?
+   ┌────┴─────┐
+  yes         no
+   │           │
+safe reload   conflict state
+               ↓
+       explicit buffer/disk choice
+```
+
+Clean buffers use `checktime`/`autoread`. Unsaved buffers are never silently overwritten.
+
+Conflict commands:
+
+```vim
+:AgentConflicts
+:AgentConflictDiff [path]
+:AgentConflictKeep [path]
+:AgentConflictUseDisk [path]
+```
+
+`AgentConflictUseDisk` backs up the unsaved buffer under `.nvim-agent/recovery/` before loading the external disk version.
+
+The Git review model is:
+
+```text
+HEAD
+  │ accepted/staged
+  ▼
+Git index
+  │ pending/unstaged
+  ▼
+working tree
+```
+
+Review commands:
+
+```vim
+:AgentChanges
+:AgentDiff [path]
+:AgentDiffStaged [path]
+:AgentAccept [path]
+:AgentKeep [path]
+:AgentRevert [path]
+:AgentUnaccept [path]
+```
+
+`AgentAccept` stages a reviewed file but does not commit. `AgentKeep` leaves it pending. `AgentRevert` first creates a recovery backup and restores only the working tree to the current index, preserving earlier accepted/staged content. `AgentUnaccept` moves an accepted file back to pending without losing working-tree content.
+
+With Gitsigns loaded, hunk-level commands are available:
+
+```vim
+:AgentNextHunk
+:AgentPrevHunk
+:AgentAcceptHunk
+:AgentKeepHunk
+:AgentRevertHunk
+```
+
+File-level commands remain plugin-free and headless-safe, which keeps the workflow deployable over SSH/CI/containers.
+
+A typical loop is:
+
+```text
+:Agent codex
+    ↓
+Agent edits
+    ↓
+:AgentConflicts
+    ↓
+:AgentChanges
+    ↓
+:AgentDiff
+    ↓
+accept / keep / revert
+    ↓
+:ProjectBuild
+:ProjectTest
+    ↓
+:AgentContext
+    ↓
+:AgentDiffStaged
+```
+
+See [Agent-safe external changes and diff-first review](docs/AGENT_REVIEW_WORKFLOW.md) for recovery semantics, headless usage, and the complete state machine.
+
 ## Keymaps
 
 | Key | Action |
@@ -344,35 +417,43 @@ See [IDE ↔ Agent Context Bridge](docs/AGENT_CONTEXT_BRIDGE.md) for the schema,
 | `F8` | project configure |
 | `<leader>pi` | project info |
 | `<leader>pc/pb/pt/pl/pf` | configure/build/test/lint/format |
+| `<leader>ac` | list Agent changes |
+| `<leader>ad` | pending Agent diff |
+| `<leader>aD` | accepted/staged Agent diff |
+| `<leader>ax` | external-file conflicts |
+| `[a` / `]a` | previous / next Agent hunk |
+| `<leader>aa` | accept current Agent hunk |
+| `<leader>ak` | keep current hunk pending |
+| `<leader>ar` | revert current pending hunk |
 | `F9` | single-file C/C++ compile |
 | `F4` | run single-file binary |
 | `F10` | quickfix window |
 
 ## CI
 
-The primary CI path validates configuration loading, real project execution, repository-agent contracts, and runtime context export:
+The primary CI validates configuration loading, project execution, repository-agent contracts, and runtime context export. A dedicated `Agent Review CI` additionally exercises the real conflict/review state machine:
 
 ```text
-Neovim stable (must satisfy 0.11+)
+clean external edit → safe reload
         ↓
-minimal / cpp / agent profile smoke tests
+unsaved buffer + external edit → conflict
         ↓
-CMake Presets configure/build/test/lint/format fixture
+UseDisk → recovery backup
         ↓
-Make + Ninja project task fixtures
+pending working-tree Agent edit
         ↓
-AgentInit / AGENTS.md / CLAUDE.md bridge fixture
+accept/stage
         ↓
-Agent registry contract
+second pending edit
         ↓
-AgentContext diagnostic / Git / task result / Quickfix fixture
+revert to accepted index
         ↓
-.nvim-agent Git-hygiene check
+unaccept back to pending
         ↓
-PowerShell installer parser check
+context + Git hygiene verification
 ```
 
-Network plugin installation is disabled during profile/task smoke tests so project execution remains deterministic.
+Network plugin installation is disabled during headless tests so file-level project/agent behavior remains deterministic.
 
 ## Roadmap
 

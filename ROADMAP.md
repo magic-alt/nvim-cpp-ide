@@ -26,7 +26,7 @@
 - [x] Registry extension/disable mechanism for custom agent CLIs
 - [x] CI fixture for generation, overwrite safety, Claude bridge, and registry behavior
 
-## v0.5 — IDE ↔ agent context bridge
+## v0.5 — IDE ↔ agent context + review bridge
 
 - [x] Export loaded-buffer LSP diagnostics and Quickfix state
 - [x] Export Git status plus staged/unstaged diff summaries without persisting full patches
@@ -36,8 +36,15 @@
 - [x] Auto-refresh context before launching a registered external agent CLI
 - [x] Keep `.nvim-agent/` disposable and locally ignored without mutating project-root `.gitignore`
 - [x] Headless/CI/SSH/container/worktree deployment documentation and CI fixture
-- [ ] Agent-safe external-file reload conflict UX
-- [ ] Diff-first review workflow
+- [x] Safely auto-reload clean buffers after external edits
+- [x] Detect unsaved-buffer vs external-disk conflicts without overwriting local edits
+- [x] Recovery-backed `keep-buffer` / `use-disk` conflict resolution
+- [x] Diff-first Git review with working tree = pending and index = human-accepted boundary
+- [x] `AgentChanges` / pending diff / accepted diff workflow
+- [x] File-level accept / keep / revert / unaccept operations
+- [x] Gitsigns-backed next/previous + accept/keep/revert hunk workflow
+- [x] Context snapshot integration for conflict and review state
+- [x] Dedicated external-edit/review state-machine CI
 
 ## v0.6+
 

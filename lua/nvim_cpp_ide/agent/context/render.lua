@@ -95,6 +95,65 @@ local function git_section(snapshot, lines)
   end
 end
 
+local function external_changes_section(snapshot, lines)
+  local state = snapshot.external_changes or {}
+  table.insert(lines, "## External file conflicts")
+  table.insert(lines, "")
+  table.insert(lines, ("- Conflicts: **%d**"):format(state.count or 0))
+  table.insert(lines, "")
+  if #(state.items or {}) == 0 then
+    table.insert(lines, "No loaded buffer currently conflicts with an external on-disk change.")
+    table.insert(lines, "")
+    return
+  end
+
+  table.insert(lines, "| File | Reason | Local modified | Detected |")
+  table.insert(lines, "|---|---|---|---|")
+  for _, item in ipairs(state.items or {}) do
+    table.insert(lines, ("| `%s` | %s | %s | %s |"):format(
+      md_cell(item.file),
+      md_cell(item.reason),
+      item.local_modified and "yes" or "no",
+      md_cell(item.detected_at)
+    ))
+  end
+  table.insert(lines, "")
+end
+
+local function review_section(snapshot, lines)
+  local review = snapshot.review or {}
+  table.insert(lines, "## Diff-first review")
+  table.insert(lines, "")
+  if review.available == false then
+    table.insert(lines, "Review metadata is unavailable: " .. md_cell(review.reason))
+    table.insert(lines, "")
+    return
+  end
+
+  table.insert(lines, ("- Changed files: **%d**"):format(review.changed_count or 0))
+  table.insert(lines, ("- Pending working-tree review: **%d**"):format(review.pending_count or 0))
+  table.insert(lines, ("- Accepted/staged: **%d**"):format(review.accepted_count or 0))
+  table.insert(lines, "")
+
+  if #(review.files or {}) == 0 then
+    table.insert(lines, "No Git changes are awaiting or carrying review state.")
+    table.insert(lines, "")
+    return
+  end
+
+  table.insert(lines, "| File | Git | Pending | Accepted |")
+  table.insert(lines, "|---|---|---|---|")
+  for _, item in ipairs(review.files or {}) do
+    table.insert(lines, ("| `%s` | `%s` | %s | %s |"):format(
+      md_cell(item.path),
+      md_cell(item.status),
+      item.pending and "yes" or "no",
+      item.accepted and "yes" or "no"
+    ))
+  end
+  table.insert(lines, "")
+end
+
 local function project_section(snapshot, lines)
   local project = snapshot.project or {}
   table.insert(lines, "## Project")
@@ -199,12 +258,14 @@ function M.markdown(snapshot)
   project_section(snapshot, lines)
   task_results_section(snapshot, lines)
   git_section(snapshot, lines)
+  external_changes_section(snapshot, lines)
+  review_section(snapshot, lines)
   diagnostics_section(snapshot, lines)
   quickfix_section(snapshot, lines)
 
   table.insert(lines, "## Agent usage")
   table.insert(lines, "")
-  table.insert(lines, "Treat this snapshot as advisory runtime state. Re-read repository files before editing and regenerate with `:AgentContext` when Neovim state changes materially.")
+  table.insert(lines, "Treat this snapshot as advisory runtime state. Use `:AgentChanges` / `:AgentDiff` before accepting or reverting agent edits, resolve external-file conflicts before destructive review actions, and regenerate with `:AgentContext` when state changes materially.")
   table.insert(lines, "")
 
   return table.concat(lines, "\n")

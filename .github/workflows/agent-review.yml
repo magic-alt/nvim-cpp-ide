@@ -1,0 +1,44 @@
+name: Agent Review CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  conflict-and-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Neovim stable
+        run: |
+          curl -fsSLo nvim.tar.gz https://github.com/neovim/neovim/releases/download/stable/nvim-linux-x86_64.tar.gz
+          tar -xzf nvim.tar.gz
+          echo "$PWD/nvim-linux-x86_64/bin" >> "$GITHUB_PATH"
+
+      - name: Exercise external-file conflicts and diff-first review
+        env:
+          NVIM_CPP_IDE_SKIP_PLUGINS: "1"
+          NVIM_CPP_IDE_QUIET: "1"
+          NVIM_CPP_IDE_PROFILE: "agent"
+        run: |
+          config="$GITHUB_WORKSPACE/init.lua"
+          fixture="$GITHUB_WORKSPACE/tests/fixtures/agent-project"
+          rm -rf "$fixture/.nvim-agent"
+          git restore --source=HEAD --staged --worktree -- "$fixture/src/main.c"
+
+          (
+            cd "$fixture"
+            nvim --headless -u "$config" \
+              "+lua dofile('$GITHUB_WORKSPACE/tests/agent_review_ci.lua')" +qa
+          )
+
+          git diff --exit-code -- "$fixture/src/main.c"
+          git diff --cached --exit-code -- "$fixture/src/main.c"
+          if [ -n "$(git -C "$fixture" status --short -- .nvim-agent)" ]; then
+            echo '.nvim-agent recovery/context files polluted git status'
+            git -C "$fixture" status --short -- .nvim-agent
+            exit 1
+          fi
