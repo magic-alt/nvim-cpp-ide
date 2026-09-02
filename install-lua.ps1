@@ -47,6 +47,32 @@ function Ensure-Git {
   throw "Git not found. Install it first: winget install Git.Git"
 }
 
+function Invoke-NativeCapture {
+  param(
+    [Parameter(Mandatory = $true)][string]$FilePath,
+    [Parameter(Mandatory = $true)][string[]]$ArgumentList
+  )
+
+  # Windows PowerShell 5.1 turns redirected native stderr into ErrorRecord objects.
+  # With the installer's global ErrorActionPreference=Stop, normal tools such as
+  # `git clone` can therefore terminate the script merely for writing progress to
+  # stderr. Capture native output under Continue and make the process exit code
+  # the authoritative success/failure signal instead.
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    $output = @(& $FilePath @ArgumentList 2>&1)
+    $exitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+
+  return [PSCustomObject]@{
+    ExitCode = $exitCode
+    Output = @($output | ForEach-Object { $_.ToString() })
+  }
+}
+
 function Backup-NvimConfig {
   param([string]$Path)
   if (-not (Test-Path $Path)) { return }
@@ -90,9 +116,19 @@ function Install-FromRemote {
   $tmp = Join-Path $env:TEMP ([System.Guid]::NewGuid().ToString())
   try {
     Write-Host "  Cloning https://github.com/$RepoName.git" -ForegroundColor DarkGray
-    & $GitExe clone --depth 1 "https://github.com/$RepoName.git" $tmp 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-      throw "Git clone failed (exit code: $LASTEXITCODE)"
+    $clone = Invoke-NativeCapture -FilePath $GitExe -ArgumentList @(
+      "clone",
+      "--depth",
+      "1",
+      "https://github.com/$RepoName.git",
+      $tmp
+    )
+    if ($clone.ExitCode -ne 0) {
+      $details = ($clone.Output | Select-Object -Last 20) -join [Environment]::NewLine
+      if ($details) {
+        throw "Git clone failed (exit code: $($clone.ExitCode))`n$details"
+      }
+      throw "Git clone failed (exit code: $($clone.ExitCode))"
     }
     Copy-ModularConfig -SourceRoot $tmp -Destination $Destination
   } finally {
