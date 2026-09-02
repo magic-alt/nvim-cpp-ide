@@ -24,6 +24,30 @@ local function ensure_dir(root)
   return dir
 end
 
+local function enrich(snapshot, root)
+  local conflicts_ok, conflicts = pcall(function()
+    return require("nvim_cpp_ide.agent.conflicts").snapshot()
+  end)
+  snapshot.external_changes = conflicts_ok and conflicts or {
+    count = 0,
+    items = {},
+    unavailable = tostring(conflicts),
+  }
+
+  local review_ok, review = pcall(function()
+    return require("nvim_cpp_ide.agent.review").snapshot(root)
+  end)
+  snapshot.review = review_ok and review or {
+    available = false,
+    reason = tostring(review),
+    changed_count = 0,
+    pending_count = 0,
+    accepted_count = 0,
+    files = {},
+  }
+  return snapshot
+end
+
 function M.paths(root)
   local dir = vim.fs.joinpath(root, ".nvim-agent")
   return {
@@ -35,13 +59,15 @@ function M.paths(root)
 end
 
 function M.collect(opts)
-  return collector.collect(opts)
+  opts = opts or {}
+  local root = require("nvim_cpp_ide.project.root").get(opts.bufnr or 0)
+  return enrich(collector.collect(opts), root)
 end
 
 function M.write(opts)
   opts = opts or {}
-  local snapshot = collector.collect(opts)
   local root = require("nvim_cpp_ide.project.root").get(opts.bufnr or 0)
+  local snapshot = enrich(collector.collect(opts), root)
   ensure_dir(root)
   local paths = M.paths(root)
 

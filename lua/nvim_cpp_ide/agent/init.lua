@@ -1,24 +1,13 @@
 local generator = require("nvim_cpp_ide.agent.generator")
 local registry = require("nvim_cpp_ide.agent.registry")
 local context = require("nvim_cpp_ide.agent.context")
+local conflicts = require("nvim_cpp_ide.agent.conflicts")
+local review = require("nvim_cpp_ide.agent.review")
 
 local M = {}
 
 local function is_headless()
   return #vim.api.nvim_list_uis() == 0
-end
-
-local function setup_external_change_detection()
-  local group = vim.api.nvim_create_augroup("nvim_cpp_ide_agent_files", { clear = true })
-  vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold" }, {
-    group = group,
-    desc = "Notice files changed by external coding agents",
-    callback = function(args)
-      if vim.bo[args.buf].buftype == "" and not vim.bo[args.buf].modified then
-        vim.cmd("silent! checktime")
-      end
-    end,
-  })
 end
 
 local function open_terminal(argv, root)
@@ -55,20 +44,28 @@ end
 
 local function report_error(message, exit_code)
   if is_headless() then
-    io.stderr:write(message .. "\n")
+    io.stderr:write(tostring(message) .. "\n")
     if exit_code then
       vim.cmd("cquit " .. exit_code)
     end
   else
-    vim.notify(message, vim.log.levels.ERROR)
+    vim.notify(tostring(message), vim.log.levels.ERROR)
   end
 end
 
 local function report_warning(message)
   if is_headless() then
-    io.stderr:write(message .. "\n")
+    io.stderr:write(tostring(message) .. "\n")
   else
-    vim.notify(message, vim.log.levels.WARN)
+    vim.notify(tostring(message), vim.log.levels.WARN)
+  end
+end
+
+local function report_result(title, result)
+  if is_headless() then
+    print(vim.json.encode(result))
+  else
+    vim.notify(vim.inspect(result), vim.log.levels.INFO, { title = title })
   end
 end
 
@@ -80,6 +77,30 @@ local function export_context()
   return result
 end
 
+local function target_arg(opts)
+  return opts.args ~= "" and opts.args or nil
+end
+
+local function run_review_mutation(title, fn, target)
+  local result, err = fn(target)
+  if not result then
+    report_error(err, is_headless() and 2 or nil)
+    return
+  end
+  report_result(title, result)
+end
+
+local function run_hunk(title, fn)
+  local ok, err = fn()
+  if not ok then
+    report_error(err, is_headless() and 2 or nil)
+    return
+  end
+  if not is_headless() then
+    vim.notify(title, vim.log.levels.INFO, { title = "Agent Review" })
+  end
+end
+
 local function setup_commands(profile)
   vim.api.nvim_create_user_command("AgentProfileInfo", function()
     local project = require("nvim_cpp_ide.project.engine").info()
@@ -89,18 +110,16 @@ local function setup_commands(profile)
       profile = profile.name,
       project = project,
       agents = agent_snapshot(),
+      conflicts = conflicts.snapshot(),
+      review = review.snapshot(root),
       context = {
         json = ".nvim-agent/context.json",
         markdown = ".nvim-agent/context.md",
         exists = vim.fn.filereadable(paths.json) == 1 and vim.fn.filereadable(paths.markdown) == 1,
       },
     }
-    if is_headless() then
-      print(vim.json.encode(info))
-    else
-      vim.notify(vim.inspect(info), vim.log.levels.INFO, { title = "Agent Profile" })
-    end
-  end, { desc = "Show agent profile, project contract, CLI registry, and context snapshot state" })
+    report_result("Agent Profile", info)
+  end, { desc = "Show agent profile, project contract, conflicts, review state, CLI registry, and context snapshot" })
 
   vim.api.nvim_create_user_command("AgentInit", function(opts)
     local ok, result = pcall(generator.run, { force = opts.bang })
@@ -140,6 +159,8 @@ local function setup_commands(profile)
       diagnostics = result.snapshot.diagnostics.count,
       git_dirty = result.snapshot.git.dirty,
       current_file = result.snapshot.current.file,
+      conflicts = result.snapshot.external_changes and result.snapshot.external_changes.count or 0,
+      pending_review = result.snapshot.review and result.snapshot.review.pending_count or 0,
     }
     if is_headless() then
       print(vim.json.encode(summary))
@@ -171,20 +192,134 @@ local function setup_commands(profile)
       report_error(snapshot, is_headless() and 2 or nil)
       return
     end
-    if is_headless() then
-      print(vim.json.encode(snapshot))
-    else
-      vim.notify(vim.inspect(snapshot), vim.log.levels.INFO, { title = "Agent Context" })
-    end
+    report_result("Agent Context", snapshot)
   end, { desc = "Print the current agent context snapshot without writing files" })
 
-  vim.api.nvim_create_user_command("AgentList", function()
-    local agents = agent_snapshot()
+  vim.api.nvim_create_user_command("AgentConflicts", function()
+    local root = require("nvim_cpp_ide.project.root").get(0)
+    local snapshot = conflicts.snapshot()
     if is_headless() then
-      print(vim.json.encode(agents))
-    else
-      vim.notify(vim.inspect(agents), vim.log.levels.INFO, { title = "Agent Registry" })
+      print(vim.json.encode(snapshot))
+      return
     end
+
+    local items = {}
+    for _, item in ipairs(snapshot.items) do
+      table.insert(items, {
+        filename = vim.fs.joinpath(root, item.file),
+        lnum = 1,
+        col = 1,
+        text = ("[%s] %s"):format(item.reason, item.file),
+      })
+    end
+    vim.fn.setqflist({}, " ", { title = "Agent file conflicts", items = items })
+    if #items > 0 then
+      vim.cmd("copen")
+    else
+      vim.notify("No external-file conflicts", vim.log.levels.INFO, { title = "Agent File Conflict" })
+    end
+  end, { desc = "List unsaved-buffer conflicts caused by external file changes" })
+
+  vim.api.nvim_create_user_command("AgentConflictDiff", function(opts)
+    local result, err = conflicts.open_diff(target_arg(opts))
+    if not result then
+      report_error(err, is_headless() and 2 or nil)
+    end
+  end, { nargs = "?", complete = "file", desc = "Compare unsaved buffer content with the external disk version" })
+
+  vim.api.nvim_create_user_command("AgentConflictKeep", function(opts)
+    run_review_mutation("Agent File Conflict", conflicts.keep, target_arg(opts))
+  end, { nargs = "?", complete = "file", desc = "Keep the local unsaved buffer and acknowledge the current disk version" })
+
+  vim.api.nvim_create_user_command("AgentConflictUseDisk", function(opts)
+    run_review_mutation("Agent File Conflict", conflicts.use_disk, target_arg(opts))
+  end, { nargs = "?", complete = "file", desc = "Back up the local buffer and replace it with the external disk version" })
+
+  vim.api.nvim_create_user_command("AgentChanges", function()
+    local snapshot, err = review.populate_changes()
+    if not snapshot then
+      report_error(err, is_headless() and 2 or nil)
+      return
+    end
+    if is_headless() then
+      print(vim.json.encode(snapshot))
+    elseif snapshot.changed_count == 0 then
+      vim.notify("No Git changes to review", vim.log.levels.INFO, { title = "Agent Review" })
+    end
+  end, { desc = "List pending and accepted Git changes for agent review" })
+
+  vim.api.nvim_create_user_command("AgentDiff", function(opts)
+    local target = target_arg(opts)
+    if is_headless() then
+      local text, err = review.diff_text(target, { staged = false })
+      if not text then
+        report_error(err, 2)
+        return
+      end
+      io.stdout:write(text .. (vim.endswith(text, "\n") and "" or "\n"))
+    else
+      local result, err = review.open_diff(target, { staged = false })
+      if not result then
+        report_error(err)
+      end
+    end
+  end, { nargs = "?", complete = "file", desc = "Review pending working-tree changes against the accepted index" })
+
+  vim.api.nvim_create_user_command("AgentDiffStaged", function(opts)
+    local target = target_arg(opts)
+    if is_headless() then
+      local text, err = review.diff_text(target, { staged = true })
+      if not text then
+        report_error(err, 2)
+        return
+      end
+      io.stdout:write(text .. (vim.endswith(text, "\n") and "" or "\n"))
+    else
+      local result, err = review.open_diff(target, { staged = true })
+      if not result then
+        report_error(err)
+      end
+    end
+  end, { nargs = "?", complete = "file", desc = "Review accepted staged changes against HEAD" })
+
+  vim.api.nvim_create_user_command("AgentAccept", function(opts)
+    run_review_mutation("Agent Review", review.accept, target_arg(opts))
+  end, { nargs = "?", complete = "file", desc = "Accept a file by staging its current working-tree state" })
+
+  vim.api.nvim_create_user_command("AgentKeep", function(opts)
+    run_review_mutation("Agent Review", review.keep, target_arg(opts))
+  end, { nargs = "?", complete = "file", desc = "Keep a file pending without changing its Git state" })
+
+  vim.api.nvim_create_user_command("AgentRevert", function(opts)
+    run_review_mutation("Agent Review", review.revert, target_arg(opts))
+  end, { nargs = "?", complete = "file", desc = "Back up and revert pending working-tree changes to the accepted index" })
+
+  vim.api.nvim_create_user_command("AgentUnaccept", function(opts)
+    run_review_mutation("Agent Review", review.unaccept, target_arg(opts))
+  end, { nargs = "?", complete = "file", desc = "Move an accepted staged file back to pending review" })
+
+  vim.api.nvim_create_user_command("AgentNextHunk", function()
+    run_hunk("Moved to next agent-change hunk", review.next_hunk)
+  end, { desc = "Move to the next pending diff hunk" })
+
+  vim.api.nvim_create_user_command("AgentPrevHunk", function()
+    run_hunk("Moved to previous agent-change hunk", review.prev_hunk)
+  end, { desc = "Move to the previous pending diff hunk" })
+
+  vim.api.nvim_create_user_command("AgentAcceptHunk", function()
+    run_hunk("Accepted current hunk", review.accept_hunk)
+  end, { desc = "Accept the current hunk through gitsigns staging" })
+
+  vim.api.nvim_create_user_command("AgentKeepHunk", function()
+    run_hunk("Kept current hunk pending", review.keep_hunk)
+  end, { desc = "Keep the current hunk pending and move to the next hunk" })
+
+  vim.api.nvim_create_user_command("AgentRevertHunk", function()
+    run_hunk("Reverted current hunk", review.revert_hunk)
+  end, { desc = "Revert the current pending hunk through gitsigns" })
+
+  vim.api.nvim_create_user_command("AgentList", function()
+    report_result("Agent Registry", agent_snapshot())
   end, { desc = "List registered coding-agent CLIs and availability" })
 
   vim.api.nvim_create_user_command("AgentTerminal", function(opts)
@@ -239,9 +374,25 @@ local function setup_commands(profile)
   })
 end
 
+local function setup_keymaps()
+  local map = function(lhs, command, desc)
+    vim.keymap.set("n", lhs, "<cmd>" .. command .. "<cr>", { desc = desc, silent = true })
+  end
+  map("<leader>ac", "AgentChanges", "Agent changes")
+  map("<leader>ad", "AgentDiff", "Agent pending diff")
+  map("<leader>aD", "AgentDiffStaged", "Agent accepted diff")
+  map("<leader>ax", "AgentConflicts", "Agent file conflicts")
+  map("]a", "AgentNextHunk", "Agent next hunk")
+  map("[a", "AgentPrevHunk", "Agent previous hunk")
+  map("<leader>aa", "AgentAcceptHunk", "Agent accept hunk")
+  map("<leader>ak", "AgentKeepHunk", "Agent keep hunk")
+  map("<leader>ar", "AgentRevertHunk", "Agent revert hunk")
+end
+
 function M.setup(profile)
-  setup_external_change_detection()
+  conflicts.setup()
   setup_commands(profile)
+  setup_keymaps()
 end
 
 return M
