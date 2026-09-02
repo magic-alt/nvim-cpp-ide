@@ -47,6 +47,53 @@ function Ensure-Git {
   throw "Git not found. Install it first: winget install Git.Git"
 }
 
+function Find-CCompiler {
+  $candidates = @()
+  if ($env:CC) {
+    $candidates += $env:CC
+  }
+  $candidates += @("cc", "gcc", "clang", "cl", "zig")
+
+  $seen = @{}
+  foreach ($candidate in $candidates) {
+    if (-not $candidate -or $seen.ContainsKey($candidate)) {
+      continue
+    }
+    $seen[$candidate] = $true
+
+    $command = Get-Command $candidate -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($command) {
+      return [PSCustomObject]@{
+        Name = $candidate
+        Path = $command.Source
+      }
+    }
+  }
+
+  return $null
+}
+
+function Ensure-CCompiler {
+  $compiler = Find-CCompiler
+  if ($compiler) {
+    Write-Host "  C compiler: $($compiler.Name) ($($compiler.Path))" -ForegroundColor DarkGray
+    return $compiler
+  }
+
+  throw @"
+No C compiler found in PATH. nvim-treesitter must compile language parsers during the first plugin synchronization.
+
+Recommended Windows setup:
+  winget install --id LLVM.LLVM -e --interactive
+
+In the LLVM installer, select the option to add LLVM to the system PATH. Then close and reopen PowerShell and verify:
+  clang --version
+  Get-Command clang
+
+After clang is visible, rerun the nvim-cpp-ide installer. Alternatives are GCC/MinGW, MSVC 'cl' from a Visual Studio Developer shell, or Zig.
+"@
+}
+
 function Invoke-NativeCapture {
   param(
     [Parameter(Mandatory = $true)][string]$FilePath,
@@ -150,6 +197,8 @@ function Invoke-FirstLaunch {
 
   $versionLine = (& $nvim.Source --version | Select-Object -First 1)
   Write-Host "  $versionLine" -ForegroundColor DarkGray
+
+  $null = Ensure-CCompiler
 
   Write-Host "  Synchronizing lazy.nvim plugins..." -ForegroundColor Cyan
   & $nvim.Source --headless "+Lazy! sync" +qa
