@@ -204,3 +204,30 @@ jobs:
             $parseErrors | Format-List
             exit 1
           }
+
+  windows-powershell-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          Write-Host "Windows PowerShell $($PSVersionTable.PSVersion)"
+          if ($PSVersionTable.PSVersion.Major -ne 5) {
+            throw "Expected Windows PowerShell 5.1"
+          }
+
+      - name: Exercise remote installer with native Git stderr
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\install-lua.ps1 -SkipFirstLaunch -NoBackup
+
+          $installed = Join-Path $env:LOCALAPPDATA 'nvim'
+          if (-not (Test-Path (Join-Path $installed 'init.lua'))) {
+            throw 'Remote installer did not install init.lua'
+          }
+          if (-not (Test-Path (Join-Path $installed 'lua\nvim_cpp_ide\agent\init.lua'))) {
+            throw 'Remote installer did not install the modular Lua tree'
+          }
