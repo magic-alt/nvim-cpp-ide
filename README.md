@@ -5,8 +5,8 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/magic-alt/nvim-cpp-ide/ci.yml?branch=main)](.github/workflows/ci.yml)
 
-> **CN**：3 分钟把 Neovim/Vim 变成 C/C++ 友好的 IDE，并为 Coding Agent 工作流提供可扩展基础。  
-> **EN**: Turn Neovim/Vim into a C/C++ IDE in 3 minutes, with an extensible foundation for coding-agent workflows.
+> **CN**：3 分钟把 Neovim/Vim 变成 C/C++ 友好的 IDE，并把仓库、构建任务与外部 Coding Agent 连接成可验证的 AI-native 工作流。  
+> **EN**: Turn Neovim/Vim into a C/C++ IDE in 3 minutes, with repository contracts and deterministic task execution for external coding agents.
 
 ## Lua edition: Neovim 0.11+
 
@@ -18,7 +18,7 @@ init.lua
     ├── core/       # editor options and keymaps
     ├── plugins/    # lazy.nvim specs
     ├── project/    # root detection + task engine + build backends
-    ├── agent/      # provider-neutral agent profile foundation
+    ├── agent/      # AGENTS.md generation + CLI registry + file lifecycle
     ├── lsp.lua
     ├── tasks.lua
     └── profile.lua
@@ -34,7 +34,7 @@ Choose a profile with `NVIM_CPP_IDE_PROFILE` or `vim.g.nvim_cpp_ide_profile`:
 |---|---|---|
 | `minimal` | lightweight editor | navigation, Treesitter, Telescope, Git/UI helpers |
 | `cpp` | default C/C++ IDE | `minimal` + clangd/LSP, completion, formatting, project task engine |
-| `agent` | agent-ready foundation | `cpp` + safe external-file detection and provider-neutral agent terminal |
+| `agent` | agent-native terminal IDE | `cpp` + safe external-file detection, `AGENTS.md` generation, Claude bridge, and CLI agent registry |
 
 Linux/macOS example:
 
@@ -49,7 +49,7 @@ $env:NVIM_CPP_IDE_PROFILE = 'agent'
 nvim
 ```
 
-The `agent` profile deliberately does **not** bind the configuration to Codex, Claude Code, Gemini CLI or another provider yet.
+The `agent` profile keeps provider SDKs, authentication, model settings, and API keys outside Neovim. Codex, Claude Code, Gemini CLI, and custom agents remain external runtimes launched through a small argv-based registry.
 
 ## Quick start
 
@@ -120,7 +120,7 @@ Inside Neovim you can install language tools through Mason, for example:
 
 ## Project Task Engine
 
-The task engine gives humans and future coding agents the same project-level interface:
+The task engine gives humans, CI, and coding agents the same project-level interface:
 
 ```vim
 :ProjectInfo
@@ -154,18 +154,99 @@ A failed headless task returns a non-zero process status. Interactive runs are a
 
 Repository-specific conventions can be declared in `.nvim-cpp-ide.json`, including backend selection, CMake preset selection and exact argv-array task overrides. See [Project Task Engine](docs/PROJECT_TASK_ENGINE.md) for the full contract.
 
-## Agent profile foundation
+## Agent Foundation
 
-With `NVIM_CPP_IDE_PROFILE=agent`, two provider-neutral primitives are enabled:
+Enable the `agent` profile, open a project, then create a shared repository contract:
 
 ```vim
-:AgentProfileInfo
-:AgentTerminal [command]
+:AgentInit
 ```
 
-`AgentTerminal` opens a terminal rooted at the detected project root. Root detection recognizes project task configuration, CMake, Ninja, Make, Meson, PlatformIO, Zephyr and Git markers.
+`AgentInit` discovers the actual project structure and Project Task Engine state, then creates `AGENTS.md` containing:
 
-The profile also runs conservative `:checktime` checks when focus/buffer state changes, but only when the current buffer is not locally modified. This prepares Neovim for files changed by external coding agents without silently overwriting local edits.
+- project/root/backend information;
+- visible top-level source/documentation directories;
+- detected repository markers;
+- resolved configure/build/test/lint/format commands;
+- the equivalent headless `ProjectTask` interface;
+- generic repository-safe rules for coding agents.
+
+An existing `AGENTS.md` is not overwritten. Explicit regeneration requires:
+
+```vim
+:AgentInit!
+```
+
+The command also creates or updates a non-destructive Claude bridge. Existing `CLAUDE.md` content is preserved and the following line is added only when missing:
+
+```markdown
+@AGENTS.md
+```
+
+The resulting repository relationship is:
+
+```text
+                     AGENTS.md
+                         │
+             shared project contract
+                         │
+        ┌────────────────┼────────────────┐
+        │                │                │
+      Codex          Claude Code       other agents
+                         │
+                    CLAUDE.md
+                    @AGENTS.md
+```
+
+### Agent registry
+
+The built-in registry contains:
+
+```text
+codex  -> codex
+claude -> claude
+gemini -> gemini
+```
+
+Inspect it:
+
+```vim
+:AgentList
+:AgentProfileInfo
+```
+
+Launch an installed CLI at the detected project root:
+
+```vim
+:Agent codex
+:Agent claude
+:Agent gemini
+```
+
+Additional CLI arguments remain argv entries:
+
+```vim
+:Agent codex --help
+```
+
+Missing agent executables are reported but never installed automatically. The registry is extensible:
+
+```lua
+vim.g.nvim_cpp_ide_agents = {
+  opencode = { "opencode" },
+  local_agent = {
+    label = "Local Agent",
+    argv = { "my-agent", "--project-mode" },
+  },
+  gemini = false,
+}
+```
+
+`AgentTerminal [command...]` remains the generic project-root terminal escape hatch.
+
+The agent profile also runs conservative `:checktime` checks when focus/buffer state changes, but only when the current buffer has no unsaved local modification. External agents can therefore modify files without Neovim silently overwriting local edits.
+
+See [Agent Foundation](docs/AGENT_FOUNDATION.md) for generation safety, registry customization, and scope boundaries.
 
 ## Keymaps
 
@@ -190,7 +271,7 @@ The profile also runs conservative `:checktime` checks when focus/buffer state c
 
 ## CI
 
-The primary CI path validates both configuration loading and actual project execution:
+The primary CI path validates configuration loading, real project execution, and the repository-agent contract:
 
 ```text
 Neovim stable (must satisfy 0.11+)
@@ -199,9 +280,11 @@ minimal / cpp / agent profile smoke tests
         ↓
 CMake Presets configure/build/test/lint/format fixture
         ↓
-Make build/test/lint/format fixture
+Make + Ninja project task fixtures
         ↓
-Ninja build/test/lint/format fixture
+AgentInit / AGENTS.md / CLAUDE.md bridge fixture
+        ↓
+Agent registry contract
         ↓
 PowerShell installer parser check
 ```
@@ -217,7 +300,7 @@ modular config
     ↓
 project task engine
     ↓
-AGENTS.md / agent registry
+AGENTS.md + agent registry
     ↓
 IDE ↔ agent context bridge
     ↓

@@ -18,14 +18,18 @@
 
 ## v0.4 — Agent foundation
 
-- [ ] `AGENTS.md` template and `:AgentInit`
-- [ ] `CLAUDE.md` compatibility bridge
-- [ ] Provider-neutral agent registry
-- [ ] Codex / Claude Code / Gemini CLI terminal adapters
+- [x] Code-backed `AGENTS.md` template and `:AgentInit[!]`
+- [x] Project structure + Project Task Engine contract injection
+- [x] Non-destructive `CLAUDE.md` → `@AGENTS.md` compatibility bridge
+- [x] Provider-neutral argv-based agent registry
+- [x] Codex / Claude Code / Gemini CLI project-root launch adapters
+- [x] Registry extension/disable mechanism for custom agent CLIs
+- [x] CI fixture for generation, overwrite safety, Claude bridge, and registry behavior
 
 ## v0.5 — IDE ↔ agent context bridge
 
 - [ ] Export diagnostics, Git state, build logs and test results
+- [ ] Persist a machine-readable current-context snapshot for external agents
 - [ ] Agent-safe external-file reload and conflict UX
 - [ ] Diff-first review workflow
 
