@@ -1,0 +1,6 @@
+{
+  "backend": "make",
+  "tasks": {
+    "lint": ["cmake", "-E", "echo", "custom lint ok"]
+  }
+}

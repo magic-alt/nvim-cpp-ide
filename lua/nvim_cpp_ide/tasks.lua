@@ -1,13 +1,6 @@
 local M = {}
 
-function M.setup()
-  vim.g.asyncrun_open = 6
-
-  vim.keymap.set("n", "<F7>", "<cmd>AsyncRun -save=2 make<cr>", { desc = "Make" })
-  vim.keymap.set("n", "<F8>", "<cmd>AsyncRun -save=2 make run<cr>", { desc = "Make run" })
-  vim.keymap.set("n", "<F6>", "<cmd>AsyncRun -save=2 make test<cr>", { desc = "Make test" })
-  vim.keymap.set("n", "<F10>", "<cmd>cwindow<cr>", { desc = "Toggle quickfix" })
-
+local function setup_single_file_build()
   vim.keymap.set("n", "<F9>", function()
     local ft = vim.bo.filetype
     if ft == "c" then
@@ -44,6 +37,25 @@ function M.setup()
       vim.notify("Binary not found. Build first (F9).", vim.log.levels.WARN)
     end
   end, { desc = "Run compiled binary" })
+end
+
+function M.setup()
+  local engine = require("nvim_cpp_ide.project.engine")
+  engine.setup()
+
+  vim.keymap.set("n", "<F6>", "<cmd>ProjectTest<cr>", { desc = "Project test" })
+  vim.keymap.set("n", "<F7>", "<cmd>ProjectBuild<cr>", { desc = "Project build" })
+  vim.keymap.set("n", "<F8>", "<cmd>ProjectConfigure<cr>", { desc = "Project configure" })
+  vim.keymap.set("n", "<F10>", "<cmd>cwindow<cr>", { desc = "Toggle quickfix" })
+
+  vim.keymap.set("n", "<leader>pi", "<cmd>ProjectInfo<cr>", { desc = "Project info" })
+  vim.keymap.set("n", "<leader>pc", "<cmd>ProjectConfigure<cr>", { desc = "Project configure" })
+  vim.keymap.set("n", "<leader>pb", "<cmd>ProjectBuild<cr>", { desc = "Project build" })
+  vim.keymap.set("n", "<leader>pt", "<cmd>ProjectTest<cr>", { desc = "Project test" })
+  vim.keymap.set("n", "<leader>pl", "<cmd>ProjectLint<cr>", { desc = "Project lint" })
+  vim.keymap.set("n", "<leader>pf", "<cmd>ProjectFormat<cr>", { desc = "Project format" })
+
+  setup_single_file_build()
 
   vim.api.nvim_create_user_command("ALEFix", function()
     local ok, conform = pcall(require, "conform")

@@ -9,9 +9,11 @@
 
 ## v0.3 — Project task engine
 
-- [ ] Project-root discovery and task abstraction
-- [ ] CMake Presets / Ninja / Make detection
-- [ ] Unified build / test / lint / format commands
+- [x] Project-root discovery and task abstraction
+- [x] CMake Presets / Ninja / Make detection
+- [x] Unified configure / build / test / lint / format commands
+- [x] Headless task execution contract with process exit-code propagation
+- [x] Project-local `.nvim-cpp-ide.json` overrides
 - [ ] Windows path, terminal and toolchain hardening
 
 ## v0.4 — Agent foundation
