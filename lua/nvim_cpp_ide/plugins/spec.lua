@@ -78,9 +78,12 @@ local function base_plugins()
     },
     {
       "nvim-treesitter/nvim-treesitter",
+      branch = "master",
       build = ":TSUpdate",
       event = { "BufReadPost", "BufNewFile" },
-      dependencies = { "nvim-treesitter/nvim-treesitter-textobjects" },
+      dependencies = {
+        { "nvim-treesitter/nvim-treesitter-textobjects", branch = "master" },
+      },
       opts = {
         ensure_installed = { "c", "cpp", "lua", "vim", "vimdoc", "query", "python", "bash" },
         auto_install = true,
