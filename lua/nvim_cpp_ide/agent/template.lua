@@ -120,6 +120,12 @@ function M.render(ctx)
     "",
     "A failed headless project task returns a non-zero exit status.",
     "",
+    "## Runtime context bridge",
+    "",
+    "When `.nvim-agent/context.json` or `.nvim-agent/context.md` exists, treat it as an advisory snapshot of the developer's current Neovim runtime state. It can include diagnostics, Git status/diff summaries, current file/symbol focus, resolved project tasks, last task results, and Quickfix entries.",
+    "",
+    "Regenerate it from Neovim with `:AgentContext` when runtime state changes materially. Do not treat the snapshot as a substitute for reading the repository itself, and do not assume it contains full file contents or a complete Git patch.",
+    "",
     "## Working rules",
     "",
     "- Read the relevant repository documentation and nearby code before editing.",
@@ -132,7 +138,7 @@ function M.render(ctx)
     "",
     "## Agent-specific files",
     "",
-    "Provider-specific launch configuration belongs in the agent runtime or editor configuration. `AGENTS.md` remains the shared repository contract.",
+    "Provider-specific launch configuration belongs in the agent runtime or editor configuration. `AGENTS.md` remains the shared repository contract. `.nvim-agent/` contains disposable runtime snapshots and should not be committed.",
     "",
   })
 

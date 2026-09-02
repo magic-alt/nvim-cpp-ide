@@ -1,5 +1,6 @@
 local generator = require("nvim_cpp_ide.agent.generator")
 local registry = require("nvim_cpp_ide.agent.registry")
+local context = require("nvim_cpp_ide.agent.context")
 
 local M = {}
 
@@ -63,20 +64,43 @@ local function report_error(message, exit_code)
   end
 end
 
+local function report_warning(message)
+  if is_headless() then
+    io.stderr:write(message .. "\n")
+  else
+    vim.notify(message, vim.log.levels.WARN)
+  end
+end
+
+local function export_context()
+  local ok, result = pcall(context.write)
+  if not ok then
+    return nil, result
+  end
+  return result
+end
+
 local function setup_commands(profile)
   vim.api.nvim_create_user_command("AgentProfileInfo", function()
     local project = require("nvim_cpp_ide.project.engine").info()
+    local root = require("nvim_cpp_ide.project.root").get(0)
+    local paths = context.paths(root)
     local info = {
       profile = profile.name,
       project = project,
       agents = agent_snapshot(),
+      context = {
+        json = ".nvim-agent/context.json",
+        markdown = ".nvim-agent/context.md",
+        exists = vim.fn.filereadable(paths.json) == 1 and vim.fn.filereadable(paths.markdown) == 1,
+      },
     }
     if is_headless() then
       print(vim.json.encode(info))
     else
       vim.notify(vim.inspect(info), vim.log.levels.INFO, { title = "Agent Profile" })
     end
-  end, { desc = "Show agent profile, project contract, and CLI registry" })
+  end, { desc = "Show agent profile, project contract, CLI registry, and context snapshot state" })
 
   vim.api.nvim_create_user_command("AgentInit", function(opts)
     local ok, result = pcall(generator.run, { force = opts.bang })
@@ -102,6 +126,57 @@ local function setup_commands(profile)
     bang = true,
     desc = "Create/preserve AGENTS.md and ensure the CLAUDE.md bridge; use ! to regenerate AGENTS.md",
   })
+
+  vim.api.nvim_create_user_command("AgentContext", function()
+    local result, err = export_context()
+    if not result then
+      report_error(err, is_headless() and 2 or nil)
+      return
+    end
+
+    local summary = {
+      json = result.json_relative,
+      markdown = result.markdown_relative,
+      diagnostics = result.snapshot.diagnostics.count,
+      git_dirty = result.snapshot.git.dirty,
+      current_file = result.snapshot.current.file,
+    }
+    if is_headless() then
+      print(vim.json.encode(summary))
+    else
+      vim.notify(
+        ("Updated %s\nUpdated %s"):format(result.json_relative, result.markdown_relative),
+        vim.log.levels.INFO,
+        { title = "Agent Context" }
+      )
+    end
+  end, { desc = "Export Neovim runtime state to .nvim-agent/context.json and context.md" })
+
+  vim.api.nvim_create_user_command("AgentContextOpen", function()
+    if is_headless() then
+      report_error("AgentContextOpen requires an attached Neovim UI", 2)
+      return
+    end
+    local result, err = export_context()
+    if not result then
+      report_error(err)
+      return
+    end
+    vim.cmd("edit " .. vim.fn.fnameescape(result.markdown_path))
+  end, { desc = "Refresh and open the human-readable agent context snapshot" })
+
+  vim.api.nvim_create_user_command("AgentContextPrint", function()
+    local ok, snapshot = pcall(context.collect)
+    if not ok then
+      report_error(snapshot, is_headless() and 2 or nil)
+      return
+    end
+    if is_headless() then
+      print(vim.json.encode(snapshot))
+    else
+      vim.notify(vim.inspect(snapshot), vim.log.levels.INFO, { title = "Agent Context" })
+    end
+  end, { desc = "Print the current agent context snapshot without writing files" })
 
   vim.api.nvim_create_user_command("AgentList", function()
     local agents = agent_snapshot()
@@ -136,6 +211,11 @@ local function setup_commands(profile)
       return
     end
 
+    local context_result, context_err = export_context()
+    if not context_result then
+      report_warning("Agent context export failed; launching CLI without refreshed snapshot: " .. tostring(context_err))
+    end
+
     local argv = vim.deepcopy(entry.argv)
     for i = 2, #opts.fargs do
       table.insert(argv, opts.fargs[i])
@@ -155,7 +235,7 @@ local function setup_commands(profile)
       end
       return registry.complete(arg_lead)
     end,
-    desc = "Launch a registered coding-agent CLI at the project root",
+    desc = "Refresh context and launch a registered coding-agent CLI at the project root",
   })
 end
 

@@ -28,9 +28,15 @@
 
 ## v0.5 — IDE ↔ agent context bridge
 
-- [ ] Export diagnostics, Git state, build logs and test results
-- [ ] Persist a machine-readable current-context snapshot for external agents
-- [ ] Agent-safe external-file reload and conflict UX
+- [x] Export loaded-buffer LSP diagnostics and Quickfix state
+- [x] Export Git status plus staged/unstaged diff summaries without persisting full patches
+- [x] Export current file/cursor and best-effort symbol focus
+- [x] Retain last per-action configure/build/test/lint/format results in the Neovim session
+- [x] Persist versioned `.nvim-agent/context.json` + human-readable `context.md`
+- [x] Auto-refresh context before launching a registered external agent CLI
+- [x] Keep `.nvim-agent/` disposable and locally ignored without mutating project-root `.gitignore`
+- [x] Headless/CI/SSH/container/worktree deployment documentation and CI fixture
+- [ ] Agent-safe external-file reload conflict UX
 - [ ] Diff-first review workflow
 
 ## v0.6+

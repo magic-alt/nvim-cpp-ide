@@ -5,8 +5,8 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/magic-alt/nvim-cpp-ide/ci.yml?branch=main)](.github/workflows/ci.yml)
 
-> **CN**：3 分钟把 Neovim/Vim 变成 C/C++ 友好的 IDE，并把仓库、构建任务与外部 Coding Agent 连接成可验证的 AI-native 工作流。  
-> **EN**: Turn Neovim/Vim into a C/C++ IDE in 3 minutes, with repository contracts and deterministic task execution for external coding agents.
+> **CN**：3 分钟把 Neovim/Vim 变成 C/C++ 友好的 IDE，并把仓库、构建任务、Neovim 运行时状态与外部 Coding Agent 连接成可验证的 AI-native 工作流。  
+> **EN**: Turn Neovim/Vim into a C/C++ IDE in 3 minutes, with repository contracts, deterministic project tasks, and runtime context snapshots for external coding agents.
 
 ## Lua edition: Neovim 0.11+
 
@@ -18,7 +18,7 @@ init.lua
     ├── core/       # editor options and keymaps
     ├── plugins/    # lazy.nvim specs
     ├── project/    # root detection + task engine + build backends
-    ├── agent/      # AGENTS.md generation + CLI registry + file lifecycle
+    ├── agent/      # AGENTS.md + CLI registry + IDE ↔ Agent context bridge
     ├── lsp.lua
     ├── tasks.lua
     └── profile.lua
@@ -34,7 +34,7 @@ Choose a profile with `NVIM_CPP_IDE_PROFILE` or `vim.g.nvim_cpp_ide_profile`:
 |---|---|---|
 | `minimal` | lightweight editor | navigation, Treesitter, Telescope, Git/UI helpers |
 | `cpp` | default C/C++ IDE | `minimal` + clangd/LSP, completion, formatting, project task engine |
-| `agent` | agent-native terminal IDE | `cpp` + safe external-file detection, `AGENTS.md` generation, Claude bridge, and CLI agent registry |
+| `agent` | agent-native terminal IDE | `cpp` + safe external-file detection, `AGENTS.md`, context snapshots, and CLI agent registry |
 
 Linux/macOS example:
 
@@ -75,7 +75,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; `
 iwr https://raw.githubusercontent.com/magic-alt/nvim-cpp-ide/main/install-lua.ps1 -UseBasicParsing | iex
 ```
 
-The installer backs up the previous config, installs both `init.lua` and the modular `lua/` tree, then runs the first lazy.nvim synchronization.
+The installer backs up the previous config, installs both `init.lua` and the complete modular `lua/` tree, then runs the first lazy.nvim synchronization. Agent Foundation and Context Bridge modules therefore require no separate deployment step.
 
 ### Legacy VimScript version — Vim 8.0+ / older Neovim
 
@@ -223,6 +223,8 @@ Launch an installed CLI at the detected project root:
 :Agent gemini
 ```
 
+Before a registered CLI is launched, Neovim refreshes the IDE ↔ Agent runtime context snapshot described below.
+
 Additional CLI arguments remain argv entries:
 
 ```vim
@@ -248,6 +250,83 @@ The agent profile also runs conservative `:checktime` checks when focus/buffer s
 
 See [Agent Foundation](docs/AGENT_FOUNDATION.md) for generation safety, registry customization, and scope boundaries.
 
+## IDE ↔ Agent Context Bridge
+
+The Context Bridge turns runtime state already known by Neovim into a bounded project-local snapshot:
+
+```text
+Neovim Runtime State
+        ↓
+loaded-buffer diagnostics
+Git status / staged+unstaged diff summaries
+current file / cursor / symbol hint
+Project Task Engine contract
+last configure/build/test/lint/format results
+Quickfix
+        ↓
+.nvim-agent/context.json
+.nvim-agent/context.md
+        ↓
+Codex / Claude Code / Gemini / scripts
+```
+
+Refresh it manually:
+
+```vim
+:AgentContext
+```
+
+Refresh and open the human-readable view:
+
+```vim
+:AgentContextOpen
+```
+
+Print the current versioned JSON snapshot without writing files:
+
+```vim
+:AgentContextPrint
+```
+
+The default output directory is disposable runtime state:
+
+```text
+.nvim-agent/
+├── .gitignore
+├── context.json
+└── context.md
+```
+
+`.nvim-agent/.gitignore` contains `*`, so context refreshes do not modify the project-root `.gitignore` or pollute `git status`.
+
+The persisted snapshot intentionally omits source-file contents, complete Git patches, environment variables, provider credentials, terminal history, and the machine-specific project-root path. Agents can use the snapshot to decide what to inspect next, then read the actual repository and run `git diff` themselves.
+
+### Headless / CI deployment
+
+No extra daemon or provider SDK is required:
+
+```bash
+cd /path/to/project
+NVIM_CPP_IDE_PROFILE=agent \
+  nvim --headless -u ~/.config/nvim/init.lua \
+  '+AgentContext' +qa
+```
+
+To export a focused file plus build/test results in one process:
+
+```bash
+NVIM_CPP_IDE_PROFILE=agent \
+  nvim --headless -u ~/.config/nvim/init.lua \
+  '+edit src/main.cpp' \
+  '+ProjectTask build' \
+  '+ProjectTask test' \
+  '+AgentContext' +qa
+```
+
+This filesystem-only design works the same way over SSH, inside containers, and inside independent Git worktrees. Diagnostics reflect currently loaded buffers, and task-result history is session-local rather than a cross-process database.
+
+See [IDE ↔ Agent Context Bridge](docs/AGENT_CONTEXT_BRIDGE.md) for the schema, privacy boundary, deployment recipes, and limitations.
+
 ## Keymaps
 
 | Key | Action |
@@ -271,7 +350,7 @@ See [Agent Foundation](docs/AGENT_FOUNDATION.md) for generation safety, registry
 
 ## CI
 
-The primary CI path validates configuration loading, real project execution, and the repository-agent contract:
+The primary CI path validates configuration loading, real project execution, repository-agent contracts, and runtime context export:
 
 ```text
 Neovim stable (must satisfy 0.11+)
@@ -285,6 +364,10 @@ Make + Ninja project task fixtures
 AgentInit / AGENTS.md / CLAUDE.md bridge fixture
         ↓
 Agent registry contract
+        ↓
+AgentContext diagnostic / Git / task result / Quickfix fixture
+        ↓
+.nvim-agent Git-hygiene check
         ↓
 PowerShell installer parser check
 ```
@@ -304,7 +387,7 @@ AGENTS.md + agent registry
     ↓
 IDE ↔ agent context bridge
     ↓
-diff/review workflow
+external-file conflict UX + diff-first review
     ↓
 ACP / MCP + multi-agent worktrees
 ```
