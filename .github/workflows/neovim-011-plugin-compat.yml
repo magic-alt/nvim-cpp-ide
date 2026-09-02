@@ -1,0 +1,42 @@
+name: Neovim 0.11 Plugin Compatibility
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  plugin-compat:
+    runs-on: ubuntu-latest
+    env:
+      NVIM_CPP_IDE_PROFILE: minimal
+      NVIM_CPP_IDE_QUIET: "1"
+      XDG_DATA_HOME: ${{ runner.temp }}/nvim-data
+      XDG_STATE_HOME: ${{ runner.temp }}/nvim-state
+      XDG_CACHE_HOME: ${{ runner.temp }}/nvim-cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Neovim 0.11.7
+        run: |
+          curl -fsSLo nvim.tar.gz https://github.com/neovim/neovim/releases/download/v0.11.7/nvim-linux-x86_64.tar.gz
+          tar -xzf nvim.tar.gz
+          echo "$PWD/nvim-linux-x86_64/bin" >> "$GITHUB_PATH"
+
+      - name: Verify exact compatibility runtime
+        run: |
+          nvim --version | head -n 3
+          nvim --headless -u NONE "+lua assert(vim.version().major == 0 and vim.version().minor == 11, 'expected Neovim 0.11.x')" +qa
+
+      - name: Bootstrap real plugins
+        run: |
+          nvim --headless -u ./init.lua "+Lazy! sync" +qa
+
+      - name: Verify Treesitter compatibility branches and legacy config API
+        run: |
+          nvim --headless -u ./init.lua \
+            "+edit tests/fixtures/agent-project/src/main.c" \
+            "+lua local ok,mod=pcall(require,'nvim-treesitter.configs'); assert(ok and mod, 'nvim-treesitter.configs must exist on Neovim 0.11 compatibility branch')" \
+            "+lua local data=vim.fn.stdpath('data'); local ts=vim.trim(vim.fn.system({'git','-C',data..'/lazy/nvim-treesitter','rev-parse','--abbrev-ref','HEAD'})); assert(ts == 'master', 'nvim-treesitter must stay on master for Neovim 0.11, got '..ts); local to=vim.trim(vim.fn.system({'git','-C',data..'/lazy/nvim-treesitter-textobjects','rev-parse','--abbrev-ref','HEAD'})); assert(to == 'master', 'nvim-treesitter-textobjects must stay on master for Neovim 0.11, got '..to)" \
+            +qa
