@@ -1,0 +1,25 @@
+{
+  "version": 4,
+  "include": ["cmake/base-presets.json"],
+  "configurePresets": [
+    {
+      "name": "ci",
+      "inherits": "base"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "ci",
+      "configurePreset": "ci"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "ci",
+      "configurePreset": "ci",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

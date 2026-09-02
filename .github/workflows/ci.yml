@@ -12,11 +12,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Shellcheck install scripts
+      - name: Install validation tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y shellcheck
-          shellcheck install.sh uninstall.sh
+          sudo apt-get install -y shellcheck cmake ninja-build make
+
+      - name: Shellcheck install scripts
+        run: shellcheck install.sh uninstall.sh
 
       - name: Install Neovim stable (0.11+)
         run: |
@@ -39,6 +41,46 @@ jobs:
             NVIM_CPP_IDE_PROFILE="$profile" nvim --headless -u ./init.lua \
               "+lua assert(vim.g.nvim_cpp_ide_profile == '$profile')" +qa
           done
+
+      - name: Exercise unified project task engine
+        env:
+          NVIM_CPP_IDE_SKIP_PLUGINS: "1"
+          NVIM_CPP_IDE_QUIET: "1"
+          NVIM_CPP_IDE_PROFILE: "cpp"
+        run: |
+          config="$GITHUB_WORKSPACE/init.lua"
+
+          rm -rf tests/fixtures/cmake-presets/build
+          (
+            cd tests/fixtures/cmake-presets
+            NVIM_CPP_IDE_CMAKE_PRESET=ci nvim --headless -u "$config" \
+              "+lua local i=require('nvim_cpp_ide.project.engine').info(); assert(i.backend == 'cmake'); assert(i.tasks.configure.metadata.configure_preset == 'ci')" \
+              "+ProjectTask configure" \
+              "+ProjectTask build" \
+              "+ProjectTask test" \
+              "+ProjectTask lint" \
+              "+ProjectTask format" +qa
+          )
+
+          (
+            cd tests/fixtures/make
+            nvim --headless -u "$config" \
+              "+lua local i=require('nvim_cpp_ide.project.engine').info(); assert(i.backend == 'make'); assert(i.tasks.configure.available == false); assert(i.tasks.lint.metadata.override == true)" \
+              "+ProjectTask build" \
+              "+ProjectTask test" \
+              "+ProjectTask lint" \
+              "+ProjectTask format" +qa
+          )
+
+          (
+            cd tests/fixtures/ninja
+            nvim --headless -u "$config" \
+              "+lua local i=require('nvim_cpp_ide.project.engine').info(); assert(i.backend == 'ninja'); assert(i.tasks.configure.available == false)" \
+              "+ProjectTask build" \
+              "+ProjectTask test" \
+              "+ProjectTask lint" \
+              "+ProjectTask format" +qa
+          )
 
       - name: Parse PowerShell installer
         shell: pwsh

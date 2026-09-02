@@ -10,14 +10,14 @@
 
 ## Lua edition: Neovim 0.11+
 
-The recommended configuration now uses a modular layout instead of a monolithic `init.lua`:
+The recommended configuration uses a modular layout:
 
 ```text
 init.lua
 └── lua/nvim_cpp_ide/
     ├── core/       # editor options and keymaps
     ├── plugins/    # lazy.nvim specs
-    ├── project/    # project-root primitives
+    ├── project/    # root detection + task engine + build backends
     ├── agent/      # provider-neutral agent profile foundation
     ├── lsp.lua
     ├── tasks.lua
@@ -33,7 +33,7 @@ Choose a profile with `NVIM_CPP_IDE_PROFILE` or `vim.g.nvim_cpp_ide_profile`:
 | Profile | Purpose | Includes |
 |---|---|---|
 | `minimal` | lightweight editor | navigation, Treesitter, Telescope, Git/UI helpers |
-| `cpp` | default C/C++ IDE | `minimal` + clangd/LSP, completion, formatting, AsyncRun |
+| `cpp` | default C/C++ IDE | `minimal` + clangd/LSP, completion, formatting, project task engine |
 | `agent` | agent-ready foundation | `cpp` + safe external-file detection and provider-neutral agent terminal |
 
 Linux/macOS example:
@@ -49,7 +49,7 @@ $env:NVIM_CPP_IDE_PROFILE = 'agent'
 nvim
 ```
 
-The `agent` profile deliberately does **not** bind the configuration to Codex, Claude Code, Gemini CLI or another provider yet. It establishes the lifecycle and terminal/file-sync primitives that future adapters can share.
+The `agent` profile deliberately does **not** bind the configuration to Codex, Claude Code, Gemini CLI or another provider yet.
 
 ## Quick start
 
@@ -97,7 +97,8 @@ The default `cpp` profile includes:
 - nvim-tree file explorer
 - gitsigns Git hunks/blame
 - conform.nvim formatting
-- AsyncRun build/test/run compatibility
+- unified CMake / Ninja / Make project tasks
+- AsyncRun single-file compatibility path
 - Mason package UI
 
 Recommended external tools:
@@ -105,15 +106,53 @@ Recommended external tools:
 ```text
 clangd
 clang-format
+cmake
+ninja or make
 lua-language-server
 stylua
 ```
 
-Inside Neovim you can install them through Mason, for example:
+Inside Neovim you can install language tools through Mason, for example:
 
 ```vim
 :MasonInstall clangd lua-language-server clang-format stylua
 ```
+
+## Project Task Engine
+
+The task engine gives humans and future coding agents the same project-level interface:
+
+```vim
+:ProjectInfo
+:ProjectTask configure
+:ProjectTask build
+:ProjectTask test
+:ProjectTask lint
+:ProjectTask format
+```
+
+Convenience commands are also available:
+
+```vim
+:ProjectConfigure
+:ProjectBuild
+:ProjectTest
+:ProjectLint
+:ProjectFormat
+```
+
+Detection order is explicit project config → CMake → standalone Ninja → Make. CMake uses `CMakePresets.json` / `CMakeUserPresets.json` when available and otherwise falls back to `cmake -S <root> -B <build-dir>`.
+
+The same command contract is usable from a coding agent or CI through headless Neovim:
+
+```bash
+cd /path/to/project
+NVIM_CPP_IDE_PROFILE=cpp nvim --headless '+ProjectTask build' +qa
+```
+
+A failed headless task returns a non-zero process status. Interactive runs are asynchronous and publish their collected output to Quickfix.
+
+Repository-specific conventions can be declared in `.nvim-cpp-ide.json`, including backend selection, CMake preset selection and exact argv-array task overrides. See [Project Task Engine](docs/PROJECT_TASK_ENGINE.md) for the full contract.
 
 ## Agent profile foundation
 
@@ -124,7 +163,7 @@ With `NVIM_CPP_IDE_PROFILE=agent`, two provider-neutral primitives are enabled:
 :AgentTerminal [command]
 ```
 
-`AgentTerminal` opens a terminal rooted at the detected project root. Root detection currently recognizes `.git`, `CMakePresets.json`, `CMakeLists.txt`, `Makefile`, `meson.build`, `platformio.ini` and `west.yml`.
+`AgentTerminal` opens a terminal rooted at the detected project root. Root detection recognizes project task configuration, CMake, Ninja, Make, Meson, PlatformIO, Zephyr and Git markers.
 
 The profile also runs conservative `:checktime` checks when focus/buffer state changes, but only when the current buffer is not locally modified. This prepares Neovim for files changed by external coding agents without silently overwriting local edits.
 
@@ -137,30 +176,37 @@ The profile also runs conservative `:checktime` checks when focus/buffer state c
 | `<leader>fg` | live grep |
 | `gd` / `gr` | definition / references |
 | `<leader>ca` | LSP code action |
-| `<leader>lf` | format |
+| `<leader>lf` | format current buffer |
 | `[d` / `]d` | previous / next diagnostic |
 | `<leader>dq` | diagnostic location list |
-| `F7` / `F8` / `F6` | `make` / `make run` / `make test` |
+| `F6` | project test |
+| `F7` | project build |
+| `F8` | project configure |
+| `<leader>pi` | project info |
+| `<leader>pc/pb/pt/pl/pf` | configure/build/test/lint/format |
 | `F9` | single-file C/C++ compile |
+| `F4` | run single-file binary |
 | `F10` | quickfix window |
 
 ## CI
 
-The primary CI path now validates the configuration that the README recommends:
+The primary CI path validates both configuration loading and actual project execution:
 
 ```text
 Neovim stable (must satisfy 0.11+)
         ↓
-minimal profile smoke test
+minimal / cpp / agent profile smoke tests
         ↓
-cpp profile smoke test
+CMake Presets configure/build/test/lint/format fixture
         ↓
-agent profile smoke test
+Make build/test/lint/format fixture
+        ↓
+Ninja build/test/lint/format fixture
         ↓
 PowerShell installer parser check
 ```
 
-Network plugin installation is disabled during profile smoke tests, while the plugin spec is still constructed so modular configuration errors fail CI deterministically.
+Network plugin installation is disabled during profile/task smoke tests so project execution remains deterministic.
 
 ## Roadmap
 

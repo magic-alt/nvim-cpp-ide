@@ -1,0 +1,16 @@
+rule echo_task
+  command = echo $message
+
+build build_target: echo_task
+  message = build ok
+
+build test: echo_task
+  message = test ok
+
+build lint: echo_task
+  message = lint ok
+
+build format: echo_task
+  message = format ok
+
+default build_target
